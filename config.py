@@ -17,3 +17,13 @@ ES_PASSWORD = ""
 # The index (similar to a table in a database) that holds the flattened alerts.
 # One index for all pipelines; the "pipeline_id" field tells them apart.
 INDEX_NAME = "nexa-alerts"
+
+# ---------------------------------------------------------------------------
+# Ollama (runs the Qwen model on your machine)
+# ---------------------------------------------------------------------------
+
+# Ollama always listens on port 11434 unless you changed it.
+OLLAMA_URL = "http://localhost:11434"
+
+# The exact model name you downloaded with "ollama pull".
+OLLAMA_MODEL = "qwen3.5:2b"

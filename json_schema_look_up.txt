@@ -1,0 +1,276 @@
+===== JSON SCHEMA =====
+{
+  "type": "object",
+  "properties": {
+    "gender": {
+      "type": "object",
+      "properties": {
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "male",
+              "female"
+            ]
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "male",
+              "female"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "age_group": {
+      "type": "object",
+      "properties": {
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "adult",
+              "child"
+            ]
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "adult",
+              "child"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "age": {
+      "type": "object",
+      "properties": {
+        "min": {
+          "type": "integer"
+        },
+        "max": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    },
+    "upper_color": {
+      "type": "object",
+      "properties": {
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "black",
+              "white",
+              "gray",
+              "silver",
+              "red",
+              "maroon",
+              "orange",
+              "brown",
+              "beige",
+              "yellow",
+              "olive",
+              "green",
+              "dark green",
+              "teal",
+              "light blue",
+              "blue",
+              "navy",
+              "purple",
+              "pink"
+            ]
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "black",
+              "white",
+              "gray",
+              "silver",
+              "red",
+              "maroon",
+              "orange",
+              "brown",
+              "beige",
+              "yellow",
+              "olive",
+              "green",
+              "dark green",
+              "teal",
+              "light blue",
+              "blue",
+              "navy",
+              "purple",
+              "pink"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "lower_color": {
+      "type": "object",
+      "properties": {
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "black",
+              "white",
+              "gray",
+              "silver",
+              "red",
+              "maroon",
+              "orange",
+              "brown",
+              "beige",
+              "yellow",
+              "olive",
+              "green",
+              "dark green",
+              "teal",
+              "light blue",
+              "blue",
+              "navy",
+              "purple",
+              "pink"
+            ]
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "black",
+              "white",
+              "gray",
+              "silver",
+              "red",
+              "maroon",
+              "orange",
+              "brown",
+              "beige",
+              "yellow",
+              "olive",
+              "green",
+              "dark green",
+              "teal",
+              "light blue",
+              "blue",
+              "navy",
+              "purple",
+              "pink"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "camera_id": {
+      "type": "object",
+      "properties": {
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "cam_1"
+            ]
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "cam_1"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "color": {
+      "type": "object",
+      "properties": {
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "black",
+              "white",
+              "gray",
+              "silver",
+              "red",
+              "maroon",
+              "orange",
+              "brown",
+              "beige",
+              "yellow",
+              "olive",
+              "green",
+              "dark green",
+              "teal",
+              "light blue",
+              "blue",
+              "navy",
+              "purple",
+              "pink"
+            ]
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "black",
+              "white",
+              "gray",
+              "silver",
+              "red",
+              "maroon",
+              "orange",
+              "brown",
+              "beige",
+              "yellow",
+              "olive",
+              "green",
+              "dark green",
+              "teal",
+              "light blue",
+              "blue",
+              "navy",
+              "purple",
+              "pink"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
+===== END JSON SCHEMA =====
