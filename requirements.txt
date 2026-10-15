@@ -1,0 +1,5 @@
+# Python packages this project needs. Install with:  pip install -r requirements.txt
+
+# Elasticsearch client. Its version must match your server (8.17),
+# so we pin it to 8.17.x. A 9.x client would refuse to talk to an 8.x server.
+elasticsearch>=8.17,<8.18
