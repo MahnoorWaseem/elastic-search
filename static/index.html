@@ -45,10 +45,8 @@
       color: #fff;
       cursor: pointer;
     }
-    button.secondary { background: #e8ecf2; color: #1d2330; }
     button:disabled { opacity: 0.6; cursor: wait; }
 
-    .hint { font-size: 14px; color: #5b6475; }
     .status { margin-top: 8px; font-size: 14px; color: #5b6475; min-height: 1.2em; }
     .status.error { color: #b42318; }
 
@@ -82,16 +80,7 @@
 <main>
   <h1>Nexa search</h1>
 
-  <!-- 1. Load alerts: flatten data/alerts.json and put it into Elasticsearch -->
-  <div class="card">
-    <div class="row">
-      <button id="loadBtn" class="secondary">Load alerts</button>
-      <span class="hint">Flattens data/alerts.json and loads it into Elasticsearch.</span>
-    </div>
-    <div id="loadStatus" class="status"></div>
-  </div>
-
-  <!-- 2. The search box -->
+  <!-- 1. The search box -->
   <div class="card">
     <form id="searchForm" class="row">
       <input id="searchText" type="text" placeholder="e.g. woman in a black top" autocomplete="off">
@@ -100,7 +89,7 @@
     <div id="searchStatus" class="status"></div>
   </div>
 
-  <!-- 3. How the search was understood: LLM filters and the Elasticsearch query -->
+  <!-- 2. How the search was understood: LLM filters and the Elasticsearch query -->
   <div id="details" class="grid hidden">
     <div class="card">
       <h2>Filters from the LLM</h2>
@@ -112,7 +101,7 @@
     </div>
   </div>
 
-  <!-- 4. The matching alerts -->
+  <!-- 3. The matching alerts -->
   <div id="resultsCard" class="card hidden">
     <h2 id="resultsTitle"></h2>
     <div class="table-wrap">
@@ -131,8 +120,6 @@
 
 <script>
   // Grab the page elements we need once, at the start.
-  const loadBtn      = document.getElementById("loadBtn");
-  const loadStatus   = document.getElementById("loadStatus");
   const searchForm   = document.getElementById("searchForm");
   const searchText   = document.getElementById("searchText");
   const searchBtn    = document.getElementById("searchBtn");
@@ -164,21 +151,6 @@
     element.textContent = message;
     element.className = isError ? "status error" : "status";
   }
-
-  // ---- "Load alerts" button --------------------------------------------
-  loadBtn.addEventListener("click", async () => {
-    loadBtn.disabled = true;               // stop double clicks while it works
-    setStatus(loadStatus, "Loading...");
-    try {
-      const data = await postJSON("/api/load");
-      setStatus(loadStatus,
-        `${data.alerts_read} alerts read, ${data.flattened} flattened ` +
-        `(saved to ${data.saved_to}), ${data.loaded} loaded into Elasticsearch.`);
-    } catch (error) {
-      setStatus(loadStatus, error.message, true);
-    }
-    loadBtn.disabled = false;
-  });
 
   // ---- "Search" button (or pressing Enter in the box) ----------------------
   searchForm.addEventListener("submit", async (event) => {

@@ -1,61 +1,120 @@
 """
 flattener.py
 
-What it does: it turns each raw MongoDB alert into one flat document:
+Turns ONE alert from the CV pipeline (received over MQTT) into one flat
+document for Elasticsearch, and adds it to output/flattened_alerts.jsonl.
 
-It copies the IDs, time and snapshot path as they are.
-It pulls gender, age and colours up out of details.
-It drops “uncertain” values and warns you about any value the schema doesn’t know.
-It saves everything to output/flattened_alerts.json.
+An incoming alert looks like this:
+    {"id": 210, "camera_id": "camera_1", "tracker_id": 1,
+     "gender": "female", "age": "null",
+     "top_color": "black", "bottom_color": "brown",
+     "timestamp": "2026-10-15 19:09:41.008842+00",
+     "box": [0.11, 0.59, 0.15, 0.89],
+     "image_key": "tenant_1/site_1/edge_1/camera_1/2026-10-15/389b....jpg"}
 
-This file only contains functions. It does nothing when you open it.
-- Right now, run_flattener.py calls flatten_and_save() so you can test it.
-- Later, the backend will call the SAME function when you click the button.
+This file only contains functions. mqtt_listener.py calls flatten_and_save()
+every time a new alert arrives.
+
+What it does:
+
+Takes one incoming alert.
+Renames id→alert_id, top_color→upper_color and bottom_color→lower_color.
+Turns the age text into age_group and age.
+Converts the timestamp to the format Elasticsearch expects.
+Checks every value against the schema.
+Appends one line to output/flattened_alerts.jsonl.
 """
 
 import json
 import logging
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from defined_schema import NOT_KNOWN, DEFINED_SCHEMA
+from defined_schema import DEFINED_SCHEMA, NOT_KNOWN
 
 log = logging.getLogger("flattener")
 
-# Where the result is saved.
-# Path(__file__).parent is the folder this file is in (nexa-search),
-# so the file always lands in nexa-search/output/, wherever you run from.
-OUTPUT_FILE = Path(__file__).parent / "output" / "flattened_alerts.json"
+# Where every flattened alert is saved, one alert per line.
+# ".jsonl" = JSON Lines: each line is one complete JSON object. Alerts arrive
+# all the time, so we just ADD a line at the end for each new one. A normal
+# .json list would have to be read and rewritten completely for every alert.
+OUTPUT_FILE = Path(__file__).parent / "output" / "flattened_alerts.jsonl"
+
+# Makes sure two alerts arriving at the same moment never write into the
+# file at the same time (their lines could get mixed up).
+_file_lock = threading.Lock()
+
+# The pipeline's old age model counted ages 1 to 15 as "child"
+# (child_age_range in the old alerts). We use the same line.
+CHILD_MAX_AGE = 15
 
 
-def to_date_text(seconds):
+def to_date_text(value):
     """
-    Mongo stores time as seconds since 1970, e.g. 1791973990.43.
-    Elasticsearch understands date text better, so we convert it:
-    1791973990.43  ->  "2026-10-14T10:33:10.434+00:00"  (UTC time)
+    The pipeline sends PostgreSQL-style time text: "2026-10-15 19:09:41.008842+00".
+    Elasticsearch wants ISO format, so we convert it:
+        "2026-10-15 19:09:41.008842+00"  ->  "2026-10-15T19:09:41.008+00:00"  (UTC)
     """
-    return datetime.fromtimestamp(seconds, tz=timezone.utc).isoformat(
-        timespec="milliseconds"
-    )
+    moment = datetime.fromisoformat(value)
+    if moment.tzinfo is None:
+        # No time zone written: we treat it as UTC.
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(timezone.utc).isoformat(timespec="milliseconds")
 
 
-# If the value is in NOT_KNOWN (“uncertain”, “unknown”, empty), it skips it quietly.
-# If the field is an enum type, like gender or colors, it keeps the value only if it’s in the allowed list.
-# If the field is a range type, like age, it keeps the value only if it’s a number between min and max, stored as an int.
-# Anything else is logged as a warning and skipped.
-# checks everything from defined_schema.py
+def read_age(alert_id, value):
+    """
+    The pipeline sends ONE age text. We turn it into our two search fields,
+    age_group and age:
+        "29"              -> age_group "adult", age 29
+        "12"              -> age_group "child", age 12
+        "adult", "child"  -> that age_group, no age number
+        "null", None      -> nothing (age unknown)
+    Returns (age_group, age).
+    """
+    if value is None:
+        return None, None
+
+    text = str(value).strip().lower()
+    if text in NOT_KNOWN:
+        return None, None
+
+    if text in ("adult", "child"):
+        return text, None
+
+    try:
+        age = int(float(text))  # "29" or "29.0" -> 29
+    except ValueError:
+        # Some other format, e.g. "20-30". We don't guess: we skip it and
+        # warn, so you can see what the pipeline really sends.
+        log.warning(
+            "alert %s: age=%r is in a format we don't read yet, so it was skipped",
+            alert_id,
+            value,
+        )
+        return None, None
+
+    age_group = "child" if age <= CHILD_MAX_AGE else "adult"
+    return age_group, age
+
+
 def clean_attributes(alert_id, raw):
     """
     Keeps only the values the schema allows.
 
-    - "uncertain", "unknown", empty  -> dropped quietly (not searchable).
+    - "uncertain", "unknown", "null", empty  -> dropped quietly (not searchable).
     - any other value not in the schema -> dropped WITH a warning, because it
-      means the CV pipeline started sending something new (e.g. "grey"),
-      and we need to add it to defined_schema.py.
+      means the CV pipeline sends something new (e.g. "grey"), and we need to
+      add it to defined_schema.py.
     """
     clean = {}
 
     for field, value in raw.items():
+        # "Black " or "BLACK" -> "black", so small differences don't break matching.
+        if isinstance(value, str):
+            value = value.strip().lower()
+
         if value in NOT_KNOWN:
             continue
 
@@ -82,79 +141,60 @@ def clean_attributes(alert_id, raw):
     return clean
 
 
-# flatten_person_attributes_pipeline_alerts(alert) builds one document in two parts:
-# Part 1 copies the identity fields (IDs, time, snapshot) as they are. These are facts, not model guesses, so nothing gets validated.
-# Part 2 collects the model’s predictions, renames estimated_age to age, and passes them through clean_attributes.
-def flatten_person_attributes_pipeline_alerts(alert):
+def flatten_person_attributes(alert):
     """One person-attributes alert in, one flat document out."""
-    details = alert.get("details") or {}
+    # Elasticsearch IDs are text, so 210 becomes "210".
+    alert_id = str(alert["id"])
 
-    # Part 1: copied as they are.
-    # These are IDs, time, and the snapshot the UI will show next to a result.
-    # They are not CV guesses, so there's nothing to check.
+    # Part 1: copied as they are (not CV guesses, so nothing to check).
     doc = {
-        "alert_id": alert["alert_id"],
-        "tenant_id": alert.get("tenant_id"),
+        "alert_id": alert_id,
         "camera_id": alert.get("camera_id"),
-        "pipeline_id": alert.get("pipeline_id"),
+        "tracker_id": alert.get("tracker_id"),
         "timestamp": to_date_text(alert["timestamp"]),
-        "snapshot_path": alert.get("snapshot_path"),
+        "box": alert.get("box"),  # where the person is in the image
+        "image_key": alert.get("image_key"),  # where the snapshot is stored
     }
 
-    # Part 2: the CV predictions.
-    # They sit inside "details" in Mongo; we pull them up to the top level
-    # (that's the "flattening") and check them against the schema.
-    attributes = {
-        "gender": details.get("gender"),
-        "age_group": details.get("age_group"),
-        "age": details.get("estimated_age"),  # renamed to the schema's name
-        "upper_color": details.get("upper_color"),
-        "lower_color": details.get("lower_color"),
-    }
-    doc.update(clean_attributes(alert["alert_id"], attributes))
+    # Part 2: the CV predictions, renamed to our schema's names and checked.
+    age_group, age = read_age(alert_id, alert.get("age"))
+    doc.update(
+        clean_attributes(
+            alert_id,
+            {
+                "gender": alert.get("gender"),
+                "age_group": age_group,
+                "age": age,
+                "upper_color": alert.get("top_color"),  # top_color    -> upper_color
+                "lower_color": alert.get("bottom_color"),  # bottom_color -> lower_color
+            },
+        )
+    )
 
     return doc
 
 
 # Which function flattens which pipeline.
 # When a new pipeline arrives (e.g. smoking), we write flatten_smoking()
-# and add one line here. Nothing else in this file changes.
+# and add one line here.
 FLATTENERS = {
-    "person_attributes": flatten_person_attributes_pipeline_alerts,
+    "person_attributes": flatten_person_attributes,
 }
 
 
-def flatten_and_save(alerts):
+def flatten_and_save(alert, pipeline="person_attributes"):
     """
-    alerts coming from raw json
-    flatten_and_save(alerts) is the entry point. It skips alerts from pipelines that have no flattener yet and counts them.
-    The main function. Give it a list of raw alerts and it:
-      1. flattens each one (skips pipelines we don't support yet)
-      2. saves them all to output/flattened_alerts.json (replacing the old file)
-      3. returns them, so the next step (loading into Elasticsearch) can use them
+    The main function, called for every new alert:
+      1. flattens it with the right function for its pipeline
+      2. adds it as one new line to output/flattened_alerts.jsonl
+      3. returns it, so it can be put into Elasticsearch next
     """
-    docs = []
-    skipped = 0
+    doc = FLATTENERS[pipeline](alert)
 
-    for alert in alerts:
-        flatten_fn = FLATTENERS.get(alert.get("pipeline_id"))
-        if flatten_fn is None:
-            skipped += 1
-            continue
-        docs.append(flatten_fn(alert))
-
-    # Create the output folder if it doesn't exist yet, then write the file.
-    # "w" = write mode: each run replaces the previous file.
     OUTPUT_FILE.parent.mkdir(exist_ok=True)
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(docs, f, indent=2)
+    with _file_lock:
+        # "a" = append mode: add to the end, never erase what's already there.
+        with open(OUTPUT_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(doc) + "\n")
 
-    log.info(
-        "%d alerts read, %d flattened, %d skipped (pipeline not supported yet)",
-        len(alerts),
-        len(docs),
-        skipped,
-    )
-    log.info("saved to %s", OUTPUT_FILE)
-
-    return docs
+    return doc

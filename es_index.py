@@ -1,22 +1,25 @@
 """
 es_index.py
 
-What it does: everything to do with the index.
+What it does:
 
-get_client() connects to Elasticsearch.
-build_mapping() turns defined_schema.py into Elasticsearch field types: enum → keyword, range → integer.
-recreate_index() creates a fresh, empty index.
-load_documents() sends all flattened alerts in one bulk request.
+Builds the field types from the schema, plus tracker_id, box and image_key.
+ensure_index() creates the index at startup only if it’s missing. If an existing index has a different field list, it stops with a clear message.
+save_to_index() adds one alert.
 
+Everything about the Elasticsearch index:
+  - get_client()    connects to Elasticsearch
+  - build_mapping() turns defined_schema.py into Elasticsearch field types
+  - ensure_index()  creates the index when the server starts, if it's missing
+  - save_to_index() adds one flattened alert to the index
 
-Like flattener.py, this file only contains functions.
-run_es_index.py calls them now; the backend will call them later
-when you click the button.
+This file only contains functions. app.py calls ensure_index() at startup,
+and mqtt_listener.py calls save_to_index() for every new alert.
 """
 
 import logging
 
-from elasticsearch import Elasticsearch, helpers
+from elasticsearch import Elasticsearch
 
 from config import ES_PASSWORD, ES_URL, ES_USERNAME, INDEX_NAME
 from defined_schema import DEFINED_SCHEMA
@@ -47,27 +50,27 @@ def get_client():
 # camera_id isn't listed here because the search schema already has it.
 BASE_FIELDS = {
     "alert_id": {"type": "keyword"},
-    "tenant_id": {"type": "keyword"},
-    "pipeline_id": {"type": "keyword"},
+    "tracker_id": {"type": "integer"},
     # A real date type, so results can be sorted newest first.
     "timestamp": {"type": "date"},
-    # Stored so the UI can show the snapshot, but never searched,
-    # so "index": False tells Elasticsearch not to build a search index for it.
-    "snapshot_path": {"type": "keyword", "index": False},
+    # Stored so the UI can use them later, but never searched,
+    # so "index": False tells Elasticsearch not to build a search index for them.
+    "box": {"type": "float", "index": False},  # a list of 4 numbers
+    "image_key": {"type": "keyword", "index": False},
 }
 
 
 def build_mapping():
     """
     The mapping tells Elasticsearch the type of every field.
-    We build it from search_schema.py, so a field added there gets indexed
+    We build it from defined_schema.py, so a field added there gets indexed
     automatically, without touching this file:
 
-      enum   -> keyword : stored exactly as written and matched exactly,
-                          so "light blue" stays one value, never "light" + "blue"
-      number_id -> keyword : camera IDs like "cam_2", also matched exactly
-      range  -> integer : a number, so we can ask "age between 20 and 30"
-      any_of -> nothing : "color" is only used while searching, never stored
+      enum      -> keyword : stored exactly as written and matched exactly,
+                             so "light blue" stays one value, never "light" + "blue"
+      number_id -> keyword : camera IDs like "camera_2", also matched exactly
+      range     -> integer : a number, so we can ask "age between 20 and 30"
+      any_of    -> nothing : "color" is only used while searching, never stored
     """
     properties = dict(BASE_FIELDS)
 
@@ -86,56 +89,56 @@ def build_mapping():
     }
 
 
-def recreate_index(es):
+def ensure_index(es):
     """
-    Deletes the index (if it exists) and creates it again, empty.
+    Called once when the server starts.
 
-    Why delete first? Elasticsearch can't change the type of a field inside
-    an existing index. Rebuilding from scratch means a change in
-    search_schema.py always takes effect, and alerts deleted from MongoDB
-    don't stay in the search results.
+    - Index missing      -> create it, empty.
+    - Index already there -> keep it, with all the alerts already in it.
+      (We used to delete and rebuild it on every load. With alerts arriving
+      all the time, that would throw them away.)
+
+    If the existing index was made with a different list of fields (for
+    example from the old alert format), new alerts would be refused, so we
+    stop with a clear message instead.
     """
-    es.indices.delete(index=INDEX_NAME, ignore_unavailable=True)
+    wanted = build_mapping()
 
-    es.indices.create(
-        index=INDEX_NAME,
-        settings={
-            # Your Docker runs a single Elasticsearch node.
-            # 1 shard: all data kept in one piece (plenty for our size).
-            # 0 replicas: no backup copy. A single node has nowhere to put
-            # a copy, and asking for one leaves the index in "yellow" state.
-            "number_of_shards": 1,
-            "number_of_replicas": 0,
-        },
-        mappings=build_mapping(),
-    )
-    log.info("created index '%s'", INDEX_NAME)
+    if not es.indices.exists(index=INDEX_NAME):
+        es.indices.create(
+            index=INDEX_NAME,
+            settings={
+                # Your Docker runs a single Elasticsearch node.
+                # 1 shard: all data kept in one piece (plenty for our size).
+                # 0 replicas: no backup copy. A single node has nowhere to put
+                # a copy, and asking for one leaves the index in "yellow" state.
+                "number_of_shards": 1,
+                "number_of_replicas": 0,
+            },
+            mappings=wanted,
+        )
+        log.info("created index '%s'", INDEX_NAME)
+        return
+
+    current = es.indices.get_mapping(index=INDEX_NAME)[INDEX_NAME]["mappings"]
+    if set(current.get("properties", {})) != set(wanted["properties"]):
+        raise RuntimeError(
+            f"The index '{INDEX_NAME}' was created with a different list of fields. "
+            f"Delete it once and restart the server; a new one will be created. "
+            f"To delete it: curl.exe -X DELETE {ES_URL}/{INDEX_NAME}"
+        )
+
+    log.info("using existing index '%s'", INDEX_NAME)
 
 
-def load_documents(es, docs):
+def save_to_index(es, doc):
     """
-    Sends all flattened alerts to Elasticsearch in one request ("bulk"),
-    instead of one request per alert, which would be much slower.
-    Returns how many documents were loaded.
+    Adds one flattened alert to the index.
+
+    The alert_id becomes the document's ID in Elasticsearch, so if the same
+    alert arrives twice, it replaces itself instead of showing up twice.
+
+    It becomes searchable within about 1 second (Elasticsearch refreshes its
+    search view every second on its own).
     """
-    actions = [
-        {
-            "_index": INDEX_NAME,
-            # The alert_id becomes the document's ID in Elasticsearch.
-            # If the same alert is loaded twice, it replaces itself
-            # instead of showing up twice in the results.
-            "_id": doc["alert_id"],
-            "_source": doc,
-        }
-        for doc in docs
-    ]
-
-    # refresh=True: make the documents searchable immediately.
-    # raise_on_error=False: don't crash on one bad document; collect the errors.
-    loaded, errors = helpers.bulk(es, actions, refresh=True, raise_on_error=False)
-
-    if errors:
-        log.warning("%d documents failed. First error: %s", len(errors), errors[0])
-    log.info("loaded %d documents into '%s'", loaded, INDEX_NAME)
-
-    return loaded
+    es.index(index=INDEX_NAME, id=doc["alert_id"], document=doc)

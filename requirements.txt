@@ -10,3 +10,9 @@ requests>=2.31
 # The backend: FastAPI makes the API, uvicorn runs it as a web server.
 fastapi>=0.115
 uvicorn>=0.30
+
+# MQTT client: receives the alerts the CV pipeline publishes.
+gmqtt>=0.7
+
+# Reads the settings in the .env file.
+python-dotenv>=1.0

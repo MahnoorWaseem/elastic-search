@@ -42,7 +42,9 @@ COLORS = [
 
 # Values the CV pipeline uses when it wasn't sure.
 # Nobody searches for an "uncertain" shirt, so we never store these.
-NOT_KNOWN = {None, "", "uncertain", "unknown"}
+# "null" and "none" are here because the new pipeline sends them as TEXT,
+# e.g. "age": "null", which is not the same as an empty value in Python.
+NOT_KNOWN = {None, "", "uncertain", "unknown", "null", "none"}
 
 DEFINED_SCHEMA = {
     "gender": {
@@ -84,7 +86,7 @@ DEFINED_SCHEMA = {
         # and the code adds the prefix to make the real ID ("cam_" + 2 = "cam_2").
         # Any number is allowed, so nothing gets forced. “camera 2” now searches cam_2 and correctly returns 0 results, since your data only has cam_1.
         "type": "number_id",
-        "prefix": "cam_",
+        "prefix": "camera_",
         "description": "the camera number the user mentions (camera 2 -> 2)",
     },
     # "color" is only used when SEARCHING, it is never stored.
