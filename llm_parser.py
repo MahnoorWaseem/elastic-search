@@ -5,7 +5,7 @@ Turns what the user types ("man in a red shirt") into the filter JSON that
 query_builder.search() understands, using Qwen3.5 2B running in Ollama.
 
 Three safety layers, so the LLM can never send something wrong to Elasticsearch:
-  1. The prompt lists the fields and allowed values (built from search_schema.py).
+  1. The prompt lists the fields and allowed values (built from DEFINED_SCHEMA.py).
   2. Ollama's "format" option: we give Ollama a JSON schema, and it only lets
      the model write JSON that fits it. The allowed values are an "enum",
      so the model physically cannot write "crimson" or invent a field.
@@ -48,16 +48,13 @@ Rules:
 6. kid, child -> age_group child. adult, grown-up -> age_group adult
 7. An age number or life stage (teenager, elderly, in her 20s, under 30) -> age with min and max
 8. A color that is not in the list -> the closest listed color (crimson -> red, grey -> gray, dark blue -> navy)
-9. Ignore everything else (bags, hats, actions). If nothing matches, write {}"""
+9. camera 2, cam 2, cam2 -> camera_id with the number only: 2
+10. Ignore everything else (bags, hats, actions). If nothing matches, write {}"""
 
 # Worked examples. A small model learns the pattern from these much better
 # than from rules alone.
 # The fields in each answer are in the same order as search_schema.py,
 # because Ollama expects the JSON fields in that order.
-
-
-# 2. Putting the colour in both upper_color and lower_color means AND, not OR. Every field becomes its own filter, and all filters must be true. So this example means top is blue and bottom is blue.
-
 EXAMPLES = [
     (
         "man in a red shirt",
@@ -71,6 +68,14 @@ EXAMPLES = [
             "lower_color": {"include": ["blue"]},
         },
     ),
+    (
+        "a girl in blue on camera 2",
+        {
+            "gender": {"include": ["female"]},
+            "camera_id": {"include": [2]},
+            "color": {"include": ["blue"]},
+        },
+    ),
     ("person wearing red", {"color": {"include": ["red"]}}),
     ("someone not wearing black", {"color": {"exclude": ["black"]}}),
     (
@@ -78,11 +83,11 @@ EXAMPLES = [
         {"age": {"min": 13, "max": 19}, "upper_color": {"include": ["white", "gray"]}},
     ),
     (
-        "elderly woman on camera 1",
+        "elderly woman on camera 3",
         {
             "gender": {"include": ["female"]},
             "age": {"min": 55, "max": 85},
-            "camera_id": {"include": ["cam_1"]},
+            "camera_id": {"include": [3]},
         },
     ),
     (
@@ -97,13 +102,6 @@ EXAMPLES = [
             "lower_color": {"include": ["gray"]},
         },
     ),
-    (
-        "a girl in blue",
-        {
-            "gender": {"include": ["female"]},
-            "color": {"include": ["blue"]},
-        },
-    ),
     ("person with a backpack", {}),
 ]
 
@@ -111,7 +109,7 @@ EXAMPLES = [
 def build_prompt():
     """
     Puts the instructions together. The field list comes from
-    search_schema.py, so a new field or value shows up here automatically.
+    DEFINED_SCHEMA.py, so a new field or value shows up here automatically.
     """
     field_lines = []
     for field, rules in DEFINED_SCHEMA.items():
@@ -119,6 +117,11 @@ def build_prompt():
             field_lines.append(
                 f"- {field}: {rules['description']}. "
                 'Write it as {"min": number, "max": number}'
+            )
+        elif rules["type"] == "number_id":
+            # No list of values here: any number is allowed.
+            field_lines.append(
+                f"- {field}: {rules['description']}. Write the number only"
             )
         else:
             values = ", ".join(allowed_values(field))
@@ -163,10 +166,11 @@ def build_prompt():
 
 def build_json_schema():
     """
-    The shape the model's answer MUST have, built from search_schema.py.
+    The shape the model's answer MUST have, built from DEFINED_SCHEMA.py.
     Ollama turns it into hard rules while the model is writing.
 
       age (range)          -> {"min": number, "max": number}
+      camera_id (number_id)-> {"include": [numbers], "exclude": [numbers]}
       every other field    -> {"include": [...], "exclude": [...]}
                               each item must be one of the allowed values
 
@@ -183,6 +187,15 @@ def build_json_schema():
                     "min": {"type": "integer"},
                     "max": {"type": "integer"},
                 },
+                "additionalProperties": False,
+            }
+        elif rules["type"] == "number_id":
+            # Any whole number. The model can't be forced into a wrong
+            # camera, because there is no list to pick from.
+            number_list = {"type": "array", "items": {"type": "integer"}}
+            properties[field] = {
+                "type": "object",
+                "properties": {"include": number_list, "exclude": number_list},
                 "additionalProperties": False,
             }
         else:
@@ -239,6 +252,16 @@ def clean_filters(raw):
                 if isinstance(value, (int, float)):
                     # Keep the age inside the schema's limits (1 to 85).
                     part[key] = max(rules["min"], min(rules["max"], int(value)))
+        elif rules["type"] == "number_id":
+            for key in ("include", "exclude"):
+                values = wanted.get(key)
+                if isinstance(values, list):
+                    # Keep whole numbers above 0 (there is no camera 0 or -1).
+                    kept = [
+                        int(v) for v in values if isinstance(v, (int, float)) and v > 0
+                    ]
+                    if kept:
+                        part[key] = kept
         else:
             allowed = allowed_values(field)
             for key in ("include", "exclude"):

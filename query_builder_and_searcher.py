@@ -10,7 +10,7 @@ The filters look like this. Every field is optional:
         "upper_color": {"exclude": ["black"]},
         "color":       {"include": ["red"]},      <- top OR bottom is red
         "age":         {"min": 20, "max": 34},
-        "camera_id":   {"include": ["cam_1"]}
+        "camera_id":   {"include": [2]}
     }
 
 Like the other modules, this file only contains functions.
@@ -116,6 +116,17 @@ def build_query(filters):
         # --- normal fields: gender, age_group, upper_color, lower_color, camera_id
         if rules["type"] == "enum":
             clauses.append(terms_clause(field, pick_values(field, include, exclude)))
+
+        # --- camera_id: the LLM gives numbers, the real IDs are "cam_" + number
+        elif rules["type"] == "number_id":
+            if include:
+                ids = [rules["prefix"] + str(n) for n in include]  # 2 -> "cam_2"
+                clauses.append({"terms": {field: ids}})
+            if exclude:
+                ids = [rules["prefix"] + str(n) for n in exclude]
+                # must_not = "none of these". We can't use "every camera except
+                # these" like we do for colours, because there's no full camera list.
+                clauses.append({"bool": {"must_not": [{"terms": {field: ids}}]}})
 
         # --- "color": the user didn't say top or bottom ----------------------
         elif rules["type"] == "any_of":

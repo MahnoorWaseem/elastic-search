@@ -65,13 +65,14 @@ def build_mapping():
 
       enum   -> keyword : stored exactly as written and matched exactly,
                           so "light blue" stays one value, never "light" + "blue"
+      number_id -> keyword : camera IDs like "cam_2", also matched exactly
       range  -> integer : a number, so we can ask "age between 20 and 30"
       any_of -> nothing : "color" is only used while searching, never stored
     """
     properties = dict(BASE_FIELDS)
 
     for field, rules in DEFINED_SCHEMA.items():
-        if rules["type"] == "enum":
+        if rules["type"] in ("enum", "number_id"):
             properties[field] = {"type": "keyword"}
         elif rules["type"] == "range":
             properties[field] = {"type": "integer"}

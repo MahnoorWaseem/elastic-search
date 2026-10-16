@@ -79,11 +79,13 @@ DEFINED_SCHEMA = {
         "description": "color of the bottom: pants, trousers, jeans, shorts, skirt",
     },
     "camera_id": {
-        "type": "enum",
-        # Not a CV value: it comes from your list of cameras.
-        # Only cam_1 exists in the data for now, so it's written here by hand.
-        "values": ["cam_1"],
-        "description": "the camera that saw the person",
+        # Cameras are not a fixed list like colours: new ones get added.
+        # So the LLM only writes the camera NUMBER the user said ("camera 2" -> 2),
+        # and the code adds the prefix to make the real ID ("cam_" + 2 = "cam_2").
+        # Any number is allowed, so nothing gets forced. “camera 2” now searches cam_2 and correctly returns 0 results, since your data only has cam_1.
+        "type": "number_id",
+        "prefix": "cam_",
+        "description": "the camera number the user mentions (camera 2 -> 2)",
     },
     # "color" is only used when SEARCHING, it is never stored.
     # It covers queries like "person wearing red" where the user doesn't say

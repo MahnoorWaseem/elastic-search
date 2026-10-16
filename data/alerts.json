@@ -184,7 +184,7 @@
   },
   "alert_id": "person_0cdfd525ecb39f6ca6d923ce11a3dadfa567df6ff331055f019843f3c2b28a5c",
   "tenant_id": "tenant_01",
-  "camera_id": "cam_1",
+  "camera_id": "cam_2",
   "alert_type": "person_attributes_finalized",
   "timestamp": 1791974029.5250313,
   "pipeline_id": "person_attributes",
@@ -198,7 +198,7 @@
       150
     ],
     "confidence": 1,
-    "observation_id": "tenant_01:cam_1:118b6ed663164b4d906ee5e1b3c4fd0d:20",
+    "observation_id": "tenant_01:cam_2:118b6ed663164b4d906ee5e1b3c4fd0d:20",
     "schema_version": 1,
     "gender": "female",
     "gender_confidence": 0.7061422845491996,
@@ -209,7 +209,7 @@
     "p_child": 0.31363144713187857,
     "age_confidence": 0.31363144713187857,
     "age_samples": 7,
-    "upper_color": "black",
+    "upper_color": "purple",
     "lower_color": "black",
     "upper_color_agreement": 0.6,
     "lower_color_agreement": 0.8,
@@ -225,7 +225,7 @@
       "byte_14"
     ],
     "aliases": [
-      "tenant_01:cam_1:118b6ed663164b4d906ee5e1b3c4fd0d:92"
+      "tenant_01:cam_2:118b6ed663164b4d906ee5e1b3c4fd0d:92"
     ],
     "frames_seen": 25,
     "frame_width": 1280,
@@ -328,7 +328,7 @@
         "dtype": "float32"
       }
     },
-    "evidence_frame_id": "tenant_01_cam_1_5d68ff54d0b1",
+    "evidence_frame_id": "tenant_01_cam_2_5d68ff54d0b1",
     "evidence_captured_at": 1791973836.6859586,
     "evidence_bbox": [
       700,
@@ -344,11 +344,11 @@
     "finalized_at": 1791974029.5250313
   },
   "status": "open",
-  "snapshot_path": "nexa-evidence/tenant_01/cam_1/alerts/person_0cdfd525ecb39f6ca6d923ce11a3dadfa567df6ff331055f019843f3c2b28a5c/snapshot.jpg",
+  "snapshot_path": "nexa-evidence/tenant_01/cam_2/alerts/person_0cdfd525ecb39f6ca6d923ce11a3dadfa567df6ff331055f019843f3c2b28a5c/snapshot.jpg",
   "clip_path": null,
-  "frame_id": "tenant_01_cam_1_5d68ff54d0b1",
-  "instance_id": "tenant_01:cam_1:118b6ed663164b4d906ee5e1b3c4fd0d:20",
-  "person_id": "tenant_01:cam_1:118b6ed663164b4d906ee5e1b3c4fd0d:20",
+  "frame_id": "tenant_01_cam_2_5d68ff54d0b1",
+  "instance_id": "tenant_01:cam_2:118b6ed663164b4d906ee5e1b3c4fd0d:20",
+  "person_id": "tenant_01:cam_2:118b6ed663164b4d906ee5e1b3c4fd0d:20",
   "anomaly_label": null,
   "created_at": {
     "$date": "2026-10-14T10:33:50.004Z"
@@ -568,7 +568,7 @@
     "age_confidence": 0.29933536564931273,
     "age_samples": 8,
     "upper_color": "black",
-    "lower_color": "black",
+    "lower_color": "red",
     "upper_color_agreement": 0.42857142857142855,
     "lower_color_agreement": 0.7142857142857143,
     "upper_color_samples": 7,

@@ -15,14 +15,14 @@
   {
     "alert_id": "person_0cdfd525ecb39f6ca6d923ce11a3dadfa567df6ff331055f019843f3c2b28a5c",
     "tenant_id": "tenant_01",
-    "camera_id": "cam_1",
+    "camera_id": "cam_2",
     "pipeline_id": "person_attributes",
     "timestamp": "2026-10-14T10:33:49.525+00:00",
-    "snapshot_path": "nexa-evidence/tenant_01/cam_1/alerts/person_0cdfd525ecb39f6ca6d923ce11a3dadfa567df6ff331055f019843f3c2b28a5c/snapshot.jpg",
+    "snapshot_path": "nexa-evidence/tenant_01/cam_2/alerts/person_0cdfd525ecb39f6ca6d923ce11a3dadfa567df6ff331055f019843f3c2b28a5c/snapshot.jpg",
     "gender": "female",
     "age_group": "adult",
     "age": 37,
-    "upper_color": "black",
+    "upper_color": "purple",
     "lower_color": "black"
   },
   {
@@ -48,7 +48,7 @@
     "age_group": "adult",
     "age": 31,
     "upper_color": "black",
-    "lower_color": "black"
+    "lower_color": "red"
   },
   {
     "alert_id": "person_c1b9b704f981512d97c8b894894e82da6a47b8e628fed05ddd5ff2c8387ee3f9",
