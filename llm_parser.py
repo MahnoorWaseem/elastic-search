@@ -45,7 +45,7 @@ Rules:
    pants, trousers, jeans, shorts, skirt -> lower_color
 4. A color without saying top or bottom -> color
 5. man, guy, boy -> gender male. woman, lady, girl -> gender female
-6. kid, child, boy, girl -> age_group child. adult, grown-up -> age_group adult
+6. kid, child -> age_group child. adult, grown-up -> age_group adult
 7. An age number or life stage (teenager, elderly, in her 20s, under 30) -> age with min and max
 8. A color that is not in the list -> the closest listed color (crimson -> red, grey -> gray, dark blue -> navy)
 9. Ignore everything else (bags, hats, actions). If nothing matches, write {}"""
@@ -54,6 +54,10 @@ Rules:
 # than from rules alone.
 # The fields in each answer are in the same order as search_schema.py,
 # because Ollama expects the JSON fields in that order.
+
+
+# 2. Putting the colour in both upper_color and lower_color means AND, not OR. Every field becomes its own filter, and all filters must be true. So this example means top is blue and bottom is blue.
+
 EXAMPLES = [
     (
         "man in a red shirt",
@@ -63,7 +67,6 @@ EXAMPLES = [
         "girl with a pink top and blue jeans",
         {
             "gender": {"include": ["female"]},
-            "age_group": {"include": ["child"]},
             "upper_color": {"include": ["pink"]},
             "lower_color": {"include": ["blue"]},
         },
@@ -92,6 +95,13 @@ EXAMPLES = [
             "gender": {"include": ["male"]},
             "upper_color": {"include": ["red"]},
             "lower_color": {"include": ["gray"]},
+        },
+    ),
+    (
+        "a girl in blue",
+        {
+            "gender": {"include": ["female"]},
+            "color": {"include": ["blue"]},
         },
     ),
     ("person with a backpack", {}),
