@@ -6,3 +6,7 @@ elasticsearch>=8.17,<8.18
 
 # Sends HTTP requests. We use it to talk to Ollama.
 requests>=2.31
+
+# The backend: FastAPI makes the API, uvicorn runs it as a web server.
+fastapi>=0.115
+uvicorn>=0.30

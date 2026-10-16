@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nexa search</title>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #f5f6f8;
+      color: #1d2330;
+    }
+    main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
+    h1 { font-size: 22px; margin: 0 0 16px; }
+    h2 { font-size: 15px; margin: 0 0 10px; }
+
+    /* White boxes around each section */
+    .card {
+      background: #fff;
+      border: 1px solid #e2e5ea;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    /* Puts things side by side, and wraps them on small screens */
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+    input[type="text"] {
+      flex: 1;
+      min-width: 200px;
+      padding: 10px 12px;
+      font-size: 15px;
+      border: 1px solid #c8cdd5;
+      border-radius: 6px;
+    }
+    button {
+      padding: 10px 16px;
+      font-size: 15px;
+      border: 0;
+      border-radius: 6px;
+      background: #2457d6;
+      color: #fff;
+      cursor: pointer;
+    }
+    button.secondary { background: #e8ecf2; color: #1d2330; }
+    button:disabled { opacity: 0.6; cursor: wait; }
+
+    .hint { font-size: 14px; color: #5b6475; }
+    .status { margin-top: 8px; font-size: 14px; color: #5b6475; min-height: 1.2em; }
+    .status.error { color: #b42318; }
+
+    /* The two code boxes (filters and query), side by side on wide screens */
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .grid .card { margin-bottom: 0; }   /* the grid gap already spaces them */
+    @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+
+    pre {
+      margin: 0;
+      padding: 12px;
+      background: #0f172a;
+      color: #e2e8f0;
+      border-radius: 6px;
+      font-size: 12.5px;
+      overflow: auto;
+      max-height: 360px;
+    }
+
+    /* Results table; scrolls sideways on a phone instead of breaking the page */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #eef0f3; white-space: nowrap; }
+    th { color: #5b6475; font-weight: 600; }
+
+    .hidden { display: none; }
+  </style>
+</head>
+
+<body>
+<main>
+  <h1>Nexa search</h1>
+
+  <!-- 1. Load alerts: flatten data/alerts.json and put it into Elasticsearch -->
+  <div class="card">
+    <div class="row">
+      <button id="loadBtn" class="secondary">Load alerts</button>
+      <span class="hint">Flattens data/alerts.json and loads it into Elasticsearch.</span>
+    </div>
+    <div id="loadStatus" class="status"></div>
+  </div>
+
+  <!-- 2. The search box -->
+  <div class="card">
+    <form id="searchForm" class="row">
+      <input id="searchText" type="text" placeholder="e.g. woman in a black top" autocomplete="off">
+      <button id="searchBtn" type="submit">Search</button>
+    </form>
+    <div id="searchStatus" class="status"></div>
+  </div>
+
+  <!-- 3. How the search was understood: LLM filters and the Elasticsearch query -->
+  <div id="details" class="grid hidden">
+    <div class="card">
+      <h2>Filters from the LLM</h2>
+      <pre id="filtersBox"></pre>
+    </div>
+    <div class="card">
+      <h2>Elasticsearch query</h2>
+      <pre id="queryBox"></pre>
+    </div>
+  </div>
+
+  <!-- 4. The matching alerts -->
+  <div id="resultsCard" class="card hidden">
+    <h2 id="resultsTitle"></h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th><th>Camera</th><th>Gender</th><th>Age</th>
+            <th>Age group</th><th>Top</th><th>Bottom</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+  // Grab the page elements we need once, at the start.
+  const loadBtn      = document.getElementById("loadBtn");
+  const loadStatus   = document.getElementById("loadStatus");
+  const searchForm   = document.getElementById("searchForm");
+  const searchText   = document.getElementById("searchText");
+  const searchBtn    = document.getElementById("searchBtn");
+  const searchStatus = document.getElementById("searchStatus");
+  const details      = document.getElementById("details");
+  const filtersBox   = document.getElementById("filtersBox");
+  const queryBox     = document.getElementById("queryBox");
+  const resultsCard  = document.getElementById("resultsCard");
+  const resultsTitle = document.getElementById("resultsTitle");
+  const resultsBody  = document.getElementById("resultsBody");
+
+  // Sends JSON to our backend and returns its JSON answer.
+  // If the backend answers with an error, we throw it so the caller can show it.
+  async function postJSON(url, body) {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.detail || "Something went wrong.");
+    }
+    return data;
+  }
+
+  // Shows a message under a button, in red if it's an error.
+  function setStatus(element, message, isError) {
+    element.textContent = message;
+    element.className = isError ? "status error" : "status";
+  }
+
+  // ---- "Load alerts" button --------------------------------------------
+  loadBtn.addEventListener("click", async () => {
+    loadBtn.disabled = true;               // stop double clicks while it works
+    setStatus(loadStatus, "Loading...");
+    try {
+      const data = await postJSON("/api/load");
+      setStatus(loadStatus,
+        `${data.alerts_read} alerts read, ${data.flattened} flattened ` +
+        `(saved to ${data.saved_to}), ${data.loaded} loaded into Elasticsearch.`);
+    } catch (error) {
+      setStatus(loadStatus, error.message, true);
+    }
+    loadBtn.disabled = false;
+  });
+
+  // ---- "Search" button (or pressing Enter in the box) ----------------------
+  searchForm.addEventListener("submit", async (event) => {
+    event.preventDefault();                // stop the browser from reloading the page
+    const text = searchText.value.trim();
+    if (!text) return;
+
+    searchBtn.disabled = true;
+    setStatus(searchStatus, "Asking the LLM... (this can take a few seconds on a CPU)");
+    try {
+      const data = await postJSON("/api/search", { text: text });
+      setStatus(searchStatus, "");
+      showResults(data);
+    } catch (error) {
+      setStatus(searchStatus, error.message, true);
+    }
+    searchBtn.disabled = false;
+  });
+
+  // Puts the search answer on the page.
+  function showResults(data) {
+    // The two "how it was understood" boxes.
+    filtersBox.textContent = JSON.stringify(data.filters, null, 2);
+    queryBox.textContent = data.es_query
+      ? JSON.stringify(data.es_query, null, 2)
+      : "No query was run: nothing searchable was found in your text.";
+    details.classList.remove("hidden");
+
+    // Nothing to search by: no results table at all.
+    if (data.es_query === null) {
+      resultsCard.classList.add("hidden");
+      return;
+    }
+
+    // Fill the results table.
+    // We use textContent (never innerHTML) so values always show as plain text.
+    resultsBody.innerHTML = "";
+    for (const alert of data.results) {
+      const row = document.createElement("tr");
+      const cells = [
+        new Date(alert.timestamp).toLocaleString(),   // UTC -> your local time
+        alert.camera_id,
+        alert.gender,
+        alert.age,
+        alert.age_group,
+        alert.upper_color,
+        alert.lower_color,
+      ];
+      for (const value of cells) {
+        const cell = document.createElement("td");
+        // A missing value means the CV pipeline was "uncertain".
+        cell.textContent = value ?? "—";
+        row.appendChild(cell);
+      }
+      resultsBody.appendChild(row);
+    }
+
+    if (data.results.length === 0) {
+      const row = document.createElement("tr");
+      const cell = document.createElement("td");
+      cell.colSpan = 7;
+      cell.textContent = "No alerts match this search.";
+      row.appendChild(cell);
+      resultsBody.appendChild(row);
+    }
+
+    resultsTitle.textContent = `Results (${data.results.length})`;
+    resultsCard.classList.remove("hidden");
+  }
+</script>
+</body>
+</html>
