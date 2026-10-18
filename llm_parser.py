@@ -45,14 +45,13 @@ Rules:
    pants, trousers, jeans, shorts, skirt -> lower_color
 4. A color without saying top or bottom -> color
 5. man, guy, boy -> gender male. woman, lady, girl -> gender female
-6. age_group child: kid, child, baby, toddler, little boy, little girl,
+6. age_group child: kid, child, baby, toddler, little boy, little girl, young boy,
+   young girl, teenager, teen, young person, youth,
    or an age of 15 or younger (a 14 year old, age 10, under 12, below 16)
    age_group adult: adult, grown-up, young man, young woman, old man, old woman,
    elderly, senior, middle-aged, or an age of 16 or older (a 30 year old, above 15, over 20)
-7. Add age_group only when the words point to ONE group:
-   - plain man, woman, guy, lady, boy, girl, person say nothing about age
-   - vague words (young person, youth, teenager) or a range that covers both
-     groups (between 10 and 20) -> no age_group
+   An age range that covers both (between 10 and 20) -> both child and adult
+7. Plain man, woman, guy, lady, boy, girl, person say nothing about age -> no age_group
 8. A color that is not in the list -> the closest listed color (crimson -> red, grey -> gray, dark blue -> navy)
 9. camera 2, cam 2, cam2 -> camera_id with the number only: 2
 10. Ignore everything else (bags, hats, actions). If nothing matches, write {}"""
@@ -112,7 +111,14 @@ EXAMPLES = [
         },
     ),
     ("kid in jeans", {"age_group": {"include": ["child"]}}),
-    ("teenager in a blue top", {"upper_color": {"include": ["blue"]}}),
+    (
+        "teenager in a blue top",
+        {"age_group": {"include": ["child"]}, "upper_color": {"include": ["blue"]}},
+    ),
+    (
+        "people between 10 and 20 on camera 1",
+        {"age_group": {"include": ["child", "adult"]}, "camera_id": {"include": [1]}},
+    ),
     (
         "adult in a top that is not black",
         {"age_group": {"include": ["adult"]}, "upper_color": {"exclude": ["black"]}},
