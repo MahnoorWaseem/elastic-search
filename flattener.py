@@ -1,6 +1,16 @@
 """
 flattener.py
 
+changed: the pipeline’s age (“adult”/”child”/”null”) is stored straight as age_group. The number-reading code is gone.
+
+What it does:
+
+Takes one incoming alert.
+Renames id→alert_id, top_color→upper_color and bottom_color→lower_color.
+Converts the timestamp to the format Elasticsearch expects.
+Checks every value against the schema.
+Appends one line to output/flattened_alerts.jsonl.
+
 Turns ONE alert from the CV pipeline (received over MQTT) into one flat
 document for Elasticsearch, and adds it to output/flattened_alerts.jsonl.
 
@@ -14,15 +24,6 @@ An incoming alert looks like this:
 
 This file only contains functions. mqtt_listener.py calls flatten_and_save()
 every time a new alert arrives.
-
-What it does:
-
-Takes one incoming alert.
-Renames id→alert_id, top_color→upper_color and bottom_color→lower_color.
-Turns the age text into age_group and age.
-Converts the timestamp to the format Elasticsearch expects.
-Checks every value against the schema.
-Appends one line to output/flattened_alerts.jsonl.
 """
 
 import json
@@ -45,10 +46,6 @@ OUTPUT_FILE = Path(__file__).parent / "output" / "flattened_alerts.jsonl"
 # file at the same time (their lines could get mixed up).
 _file_lock = threading.Lock()
 
-# The pipeline's old age model counted ages 1 to 15 as "child"
-# (child_age_range in the old alerts). We use the same line.
-CHILD_MAX_AGE = 15
-
 
 def to_date_text(value):
     """
@@ -61,42 +58,6 @@ def to_date_text(value):
         # No time zone written: we treat it as UTC.
         moment = moment.replace(tzinfo=timezone.utc)
     return moment.astimezone(timezone.utc).isoformat(timespec="milliseconds")
-
-
-def read_age(alert_id, value):
-    """
-    The pipeline sends ONE age text. We turn it into our two search fields,
-    age_group and age:
-        "29"              -> age_group "adult", age 29
-        "12"              -> age_group "child", age 12
-        "adult", "child"  -> that age_group, no age number
-        "null", None      -> nothing (age unknown)
-    Returns (age_group, age).
-    """
-    if value is None:
-        return None, None
-
-    text = str(value).strip().lower()
-    if text in NOT_KNOWN:
-        return None, None
-
-    if text in ("adult", "child"):
-        return text, None
-
-    try:
-        age = int(float(text))  # "29" or "29.0" -> 29
-    except ValueError:
-        # Some other format, e.g. "20-30". We don't guess: we skip it and
-        # warn, so you can see what the pipeline really sends.
-        log.warning(
-            "alert %s: age=%r is in a format we don't read yet, so it was skipped",
-            alert_id,
-            value,
-        )
-        return None, None
-
-    age_group = "child" if age <= CHILD_MAX_AGE else "adult"
-    return age_group, age
 
 
 def clean_attributes(alert_id, raw):
@@ -157,14 +118,15 @@ def flatten_person_attributes(alert):
     }
 
     # Part 2: the CV predictions, renamed to our schema's names and checked.
-    age_group, age = read_age(alert_id, alert.get("age"))
+    # "null" (unknown) is dropped by clean_attributes, like "uncertain".
     doc.update(
         clean_attributes(
             alert_id,
             {
                 "gender": alert.get("gender"),
-                "age_group": age_group,
-                "age": age,
+                "age_group": alert.get(
+                    "age"
+                ),  # age          -> age_group ("adult"/"child")
                 "upper_color": alert.get("top_color"),  # top_color    -> upper_color
                 "lower_color": alert.get("bottom_color"),  # bottom_color -> lower_color
             },

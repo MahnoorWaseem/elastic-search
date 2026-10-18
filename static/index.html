@@ -108,7 +108,7 @@
       <table>
         <thead>
           <tr>
-            <th>Time</th><th>Camera</th><th>Gender</th><th>Age</th>
+            <th>Time</th><th>Camera</th><th>Gender</th>
             <th>Age group</th><th>Top</th><th>Bottom</th>
           </tr>
         </thead>
@@ -194,14 +194,13 @@
         new Date(alert.timestamp).toLocaleString(),   // UTC -> your local time
         alert.camera_id,
         alert.gender,
-        alert.age,
         alert.age_group,
         alert.upper_color,
         alert.lower_color,
       ];
       for (const value of cells) {
         const cell = document.createElement("td");
-        // A missing value means the CV pipeline was "uncertain".
+        // A missing value means the CV pipeline was "uncertain" or "null".
         cell.textContent = value ?? "—";
         row.appendChild(cell);
       }
@@ -211,7 +210,7 @@
     if (data.results.length === 0) {
       const row = document.createElement("tr");
       const cell = document.createElement("td");
-      cell.colSpan = 7;
+      cell.colSpan = 6;
       cell.textContent = "No alerts match this search.";
       row.appendChild(cell);
       resultsBody.appendChild(row);

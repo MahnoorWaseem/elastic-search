@@ -46,6 +46,10 @@ def handle_message(topic, payload):
     The real work for one MQTT message. It runs in a background thread
     (see on_message), so saving alerts never slows down a search.
     """
+    # Show the message exactly as it arrived, before we change anything.
+    # payload is bytes, so we turn it into text first.
+    log.info("raw alert on %s: %s", topic, payload.decode("utf-8", errors="replace"))
+
     pipeline = PIPELINE_FOR_TOPIC.get(topic)
     if pipeline is None:
         log.warning("message on unknown topic %s, skipped", topic)
@@ -70,12 +74,11 @@ def handle_message(topic, payload):
             # One short line per alert, so you can watch them arrive.
             # "None" means the value was unknown and wasn't stored.
             log.info(
-                "alert %s saved (%s, gender %s, age_group %s, age %s, top %s, bottom %s)",
+                "alert %s saved (%s, gender %s, age_group %s, top %s, bottom %s)",
                 doc["alert_id"],
                 doc.get("camera_id"),
                 doc.get("gender"),
                 doc.get("age_group"),
-                doc.get("age"),
                 doc.get("upper_color"),
                 doc.get("lower_color"),
             )

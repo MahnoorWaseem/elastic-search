@@ -52,23 +52,12 @@ DEFINED_SCHEMA = {
         "values": ["male", "female"],
         "description": "apparent gender of the person",
     },
+    # The pipeline only tells adult or child (no age number), so this is the
+    # only age field. The LLM turns ages and words like "kid" into one of these.
     "age_group": {
         "type": "enum",
         "values": ["adult", "child"],
-        "description": "adult or child",
-    },
-    "age": {
-        "type": "range",  # range = a number between min and max
-        "min": 1,
-        "max": 85,
-        # Life stages copied from the alerts: details.models.crops.age_head.age_bins
-        # The LLM will read this to turn "teenager" or "elderly" into numbers.
-        "description": (
-            "estimated age in years. Life stages: baby or toddler 1-3, "
-            "young child 4-9, pre-teen 10-12, young teenager 13-15, "
-            "older teenager 16-19, young adult 20-34, middle-aged 35-54, "
-            "elderly 55-85"
-        ),
+        "description": "child = 15 years old or younger, adult = 16 or older",
     },
     "upper_color": {
         "type": "enum",
