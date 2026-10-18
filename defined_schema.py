@@ -59,6 +59,17 @@ DEFINED_SCHEMA = {
         "values": ["adult", "child"],
         "description": "child = 15 years old or younger, adult = 16 or older",
     },
+    # "color" is only used when SEARCHING, it is never stored.
+    # It covers queries like "person wearing red" where the user doesn't say
+    # top or bottom. The query builder will turn it into
+    # "upper_color is red OR lower_color is red".
+    # It comes BEFORE upper_color and lower_color on purpose: a colour with no
+    # garment is the more common search, so the LLM should see it first.
+    "color": {
+        "type": "any_of",
+        "fields": ["upper_color", "lower_color"],
+        "description": "a color when the user does NOT say top or bottom (a woman in brown)",
+    },
     "upper_color": {
         "type": "enum",
         "values": COLORS,
@@ -77,14 +88,5 @@ DEFINED_SCHEMA = {
         "type": "number_id",
         "prefix": "camera_",
         "description": "the camera number the user mentions (camera 2 -> 2)",
-    },
-    # "color" is only used when SEARCHING, it is never stored.
-    # It covers queries like "person wearing red" where the user doesn't say
-    # top or bottom. The query builder will turn it into
-    # "upper_color is red OR lower_color is red".
-    "color": {
-        "type": "any_of",
-        "fields": ["upper_color", "lower_color"],
-        "description": "a color when the user doesn't say top or bottom",
     },
 }

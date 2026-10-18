@@ -41,9 +41,10 @@ RULES = """How to write each field: {"include": [...], "exclude": [...]}
 Rules:
 1. Use only the values listed above, spelled exactly the same.
 2. Only add fields the user actually mentioned. Never guess.
-3. shirt, t-shirt, top, jacket, hoodie, coat, sweater -> upper_color
-   pants, trousers, jeans, shorts, skirt -> lower_color
-4. A color without saying top or bottom -> color
+3. A color with NO top or bottom word (a woman in brown, man wearing red) -> color.
+   Never use upper_color or lower_color unless the user names the clothing.
+4. Top words like  shirt, t-shirt, top, jacket, hoodie, coat, sweater-> upper_color
+   Bottom words like pants, trousers, jeans, shorts, skirt-> lower_color
 5. man, guy, boy -> gender male. woman, lady, girl -> gender female
 6. age_group child: kid, child, baby, toddler, little boy, little girl, young boy,
    young girl, teenager, teen, young person, youth,
@@ -76,11 +77,19 @@ EXAMPLES = [
         "a girl in blue on camera 2",
         {
             "gender": {"include": ["female"]},
-            "camera_id": {"include": [2]},
             "color": {"include": ["blue"]},
+            "camera_id": {"include": [2]},
         },
     ),
-    ("person wearing red", {"color": {"include": ["red"]}}),
+    (
+        "an old man in green",
+        {
+            "gender": {"include": ["male"]},
+            "age_group": {"include": ["adult"]},
+            "color": {"include": ["green"]},
+        },
+    ),
+    ("person wearing red jacket", {"upper_color": {"include": ["red"]}}),
     ("someone not wearing black", {"color": {"exclude": ["black"]}}),
     (
         "a 14 year old in a white or gray hoodie",
