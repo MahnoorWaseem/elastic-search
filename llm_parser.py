@@ -46,24 +46,64 @@ Rules:
 4. Top words like  shirt, t-shirt, top, jacket, hoodie, coat, sweater-> upper_color
    Bottom words like pants, trousers, jeans, shorts, skirt-> lower_color
 5. man, guy, boy -> gender male. woman, lady, girl -> gender female
-6. age_group child: kid, child, baby, toddler, little boy, little girl, young boy,
-   young girl, teenager, teen, young person, youth,
-   or an age of 15 or younger (a 14 year old, age 10, under 12, below 16)
-   age_group adult: adult, grown-up, young man, young woman, old man, old woman,
-   elderly, senior, middle-aged, or an age of 16 or older (a 30 year old, above 15, over 20)
+6. age_group ONLY when the request says an age or a stage of life.
+   man, woman, guy, lady, boy, girl, person, people, someone are NOT age words:
+   "a man in a green shirt" has NO age_group.
+   child: kid, child, baby, toddler, little boy, little girl, teenager, teen,
+          youth, young person, or an age of 15 or younger (a 14 year old, under 12)
+   adult: adult, grown-up, old, elderly, senior, middle-aged, young man, young woman,
+          or an age of 16 or older (a 30 year old, above 15, over 20)
    An age range that covers both (between 10 and 20) -> both child and adult
-7. Plain man, woman, guy, lady, boy, girl, person say nothing about age -> no age_group
-8. A color that is not in the list -> the closest listed color (crimson -> red, grey -> gray, dark blue -> navy)
-9. camera 2, cam 2, cam2 -> camera_id with the number only: 2
-10. Ignore everything else (bags, hats, actions). If nothing matches, write {}"""
+7. A color that is not in the list -> the closest listed color (crimson -> red, grey -> gray, dark blue -> navy)
+8. camera 2, cam 2, cam2 -> camera_id with the number only: 2
+9. Ignore everything else (bags, hats, actions). If nothing matches, write {}"""
 # Worked examples. A small model learns the pattern from these much better
 # than from rules alone.
 # The fields in each answer are in the same order as search_schema.py,
 # because Ollama expects the JSON fields in that order.
+# Worked examples. A small model learns the pattern from these much better
+# than from rules alone.
+# Several examples come in PAIRS that differ only in one word, so the model
+# sees exactly what that word changes:
+#   "man in a red shirt"  -> no age_group      "an old man in a red shirt" -> adult
+# There are also more plain man/woman/girl examples WITHOUT age_group than
+# with it, so the model doesn't learn "man means adult".
+# The fields in each answer are in the same order as defined_schema.py,
+# because Ollama expects the JSON fields in that order.
 EXAMPLES = [
+    # --- pairs: plain person word -> no age_group, age word -> age_group ---
     (
         "man in a red shirt",
         {"gender": {"include": ["male"]}, "upper_color": {"include": ["red"]}},
+    ),
+    (
+        "an old man in a red shirt",
+        {
+            "gender": {"include": ["male"]},
+            "age_group": {"include": ["adult"]},
+            "upper_color": {"include": ["red"]},
+        },
+    ),
+    (
+        "a woman on camera 2",
+        {"gender": {"include": ["female"]}, "camera_id": {"include": [2]}},
+    ),
+    (
+        "an elderly woman on camera 2",
+        {
+            "gender": {"include": ["female"]},
+            "age_group": {"include": ["adult"]},
+            "camera_id": {"include": [2]},
+        },
+    ),
+    # --- plain person words: gender only, never age_group ---
+    (
+        "a guy in a black or gray hoodie on camera 3",
+        {
+            "gender": {"include": ["male"]},
+            "upper_color": {"include": ["black", "gray"]},
+            "camera_id": {"include": [3]},
+        },
     ),
     (
         "girl with a pink top and blue jeans",
@@ -82,15 +122,16 @@ EXAMPLES = [
         },
     ),
     (
-        "an old man in green",
-        {
-            "gender": {"include": ["male"]},
-            "age_group": {"include": ["adult"]},
-            "color": {"include": ["green"]},
-        },
+        "a lady in brown",
+        {"gender": {"include": ["female"]}, "color": {"include": ["brown"]}},
+    ),
+    (
+        "a man in a top that is not black",
+        {"gender": {"include": ["male"]}, "upper_color": {"exclude": ["black"]}},
     ),
     ("person wearing red jacket", {"upper_color": {"include": ["red"]}}),
     ("someone not wearing black", {"color": {"exclude": ["black"]}}),
+    # --- age words and numbers ---
     (
         "a 14 year old in a white or gray hoodie",
         {
@@ -101,14 +142,6 @@ EXAMPLES = [
     (
         "people above 15 in a black top",
         {"age_group": {"include": ["adult"]}, "upper_color": {"include": ["black"]}},
-    ),
-    (
-        "elderly woman on camera 3",
-        {
-            "gender": {"include": ["female"]},
-            "age_group": {"include": ["adult"]},
-            "camera_id": {"include": [3]},
-        },
     ),
     (
         "young man in a crimson jacket and grey pants",
@@ -128,6 +161,7 @@ EXAMPLES = [
         "people between 10 and 20 on camera 1",
         {"age_group": {"include": ["child", "adult"]}, "camera_id": {"include": [1]}},
     ),
+    # --- nothing searchable ---
     (
         "adult in a top that is not black",
         {"age_group": {"include": ["adult"]}, "upper_color": {"exclude": ["black"]}},
