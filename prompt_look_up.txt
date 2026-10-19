@@ -4,63 +4,78 @@ Do not answer the request. Only write the JSON.
 
 Fields:
 - gender: apparent gender of the person. Values: male, female
-- age_group: adult or child. Values: adult, child
-- age: estimated age in years. Life stages: baby or toddler 1-3, young child 4-9, pre-teen 10-12, young teenager 13-15, older teenager 16-19, young adult 20-34, middle-aged 35-54, elderly 55-85. Write it as {"min": number, "max": number}
+- age_group: child = 15 years old or younger, adult = 16 or older. Values: adult, child
+- color: a color when the user does NOT say top or bottom (a woman in brown). Values: black, white, gray, silver, red, maroon, orange, brown, beige, yellow, olive, green, dark green, teal, light blue, blue, navy, purple, pink
 - upper_color: color of the top: shirt, t-shirt, jacket, hoodie, coat, sweater. Values: black, white, gray, silver, red, maroon, orange, brown, beige, yellow, olive, green, dark green, teal, light blue, blue, navy, purple, pink
 - lower_color: color of the bottom: pants, trousers, jeans, shorts, skirt. Values: black, white, gray, silver, red, maroon, orange, brown, beige, yellow, olive, green, dark green, teal, light blue, blue, navy, purple, pink
-- camera_id: the camera that saw the person. Values: cam_1
-- color: a color when the user doesn't say top or bottom. Values: black, white, gray, silver, red, maroon, orange, brown, beige, yellow, olive, green, dark green, teal, light blue, blue, navy, purple, pink
+- camera_id: the camera number the user mentions (camera 2 -> 2). Write the number only
 
-How to write each field (except age): {"include": [...], "exclude": [...]}
+How to write each field: {"include": [...], "exclude": [...]}
 - include: values the user wants
 - exclude: values the user does NOT want (words like: not, no, without, except)
 
 Rules:
 1. Use only the values listed above, spelled exactly the same.
 2. Only add fields the user actually mentioned. Never guess.
-3. shirt, t-shirt, top, jacket, hoodie, coat, sweater -> upper_color
-   pants, trousers, jeans, shorts, skirt -> lower_color
-4. A color without saying top or bottom -> color
+3. A color with NO top or bottom word (a woman in brown, man wearing red) -> color.
+   Never use upper_color or lower_color unless the user names the clothing.
+4. Top words like  shirt, t-shirt, top, jacket, hoodie, coat, sweater-> upper_color
+   Bottom words like pants, trousers, jeans, shorts, skirt-> lower_color
 5. man, guy, boy -> gender male. woman, lady, girl -> gender female
-6. kid, child, boy, girl -> age_group child. adult, grown-up -> age_group adult
-7. An age number or life stage (teenager, elderly, in her 20s, under 30) -> age with min and max
+6. age_group child: kid, child, baby, toddler, little boy, little girl, young boy,
+   young girl, teenager, teen, young person, youth,
+   or an age of 15 or younger (a 14 year old, age 10, under 12, below 16)
+   age_group adult: adult, grown-up, young man, young woman, old man, old woman,
+   elderly, senior, middle-aged, or an age of 16 or older (a 30 year old, above 15, over 20)
+   An age range that covers both (between 10 and 20) -> both child and adult
+7. Plain man, woman, guy, lady, boy, girl, person say nothing about age -> no age_group
 8. A color that is not in the list -> the closest listed color (crimson -> red, grey -> gray, dark blue -> navy)
-9. Ignore everything else (bags, hats, actions). If nothing matches, write {}
+9. camera 2, cam 2, cam2 -> camera_id with the number only: 2
+10. Ignore everything else (bags, hats, actions). If nothing matches, write {}
 
 Examples:
 Request: man in a red shirt
 JSON: {"gender": {"include": ["male"]}, "upper_color": {"include": ["red"]}}
 
 Request: girl with a pink top and blue jeans
-JSON: {"gender": {"include": ["female"]}, "age_group": {"include": ["child"]}, "upper_color": {"include": ["pink"]}, "lower_color": {"include": ["blue"]}}
+JSON: {"gender": {"include": ["female"]}, "upper_color": {"include": ["pink"]}, "lower_color": {"include": ["blue"]}}
 
-Request: person wearing red
-JSON: {"color": {"include": ["red"]}}
+Request: a girl in blue on camera 2
+JSON: {"gender": {"include": ["female"]}, "color": {"include": ["blue"]}, "camera_id": {"include": [2]}}
+
+Request: an old man in green
+JSON: {"gender": {"include": ["male"]}, "age_group": {"include": ["adult"]}, "color": {"include": ["green"]}}
+
+Request: person wearing red jacket
+JSON: {"upper_color": {"include": ["red"]}}
 
 Request: someone not wearing black
 JSON: {"color": {"exclude": ["black"]}}
 
-Request: teenager in a white or gray hoodie
-JSON: {"age": {"min": 13, "max": 19}, "upper_color": {"include": ["white", "gray"]}}
+Request: a 14 year old in a white or gray hoodie
+JSON: {"age_group": {"include": ["child"]}, "upper_color": {"include": ["white", "gray"]}}
 
-Request: elderly woman on camera 1
-JSON: {"gender": {"include": ["female"]}, "age": {"min": 55, "max": 85}, "camera_id": {"include": ["cam_1"]}}
+Request: people above 15 in a black top
+JSON: {"age_group": {"include": ["adult"]}, "upper_color": {"include": ["black"]}}
+
+Request: elderly woman on camera 3
+JSON: {"gender": {"include": ["female"]}, "age_group": {"include": ["adult"]}, "camera_id": {"include": [3]}}
+
+Request: young man in a crimson jacket and grey pants
+JSON: {"gender": {"include": ["male"]}, "age_group": {"include": ["adult"]}, "upper_color": {"include": ["red"]}, "lower_color": {"include": ["gray"]}}
+
+Request: kid in jeans
+JSON: {"age_group": {"include": ["child"]}}
+
+Request: teenager in a blue top
+JSON: {"age_group": {"include": ["child"]}, "upper_color": {"include": ["blue"]}}
+
+Request: people between 10 and 20 on camera 1
+JSON: {"age_group": {"include": ["child", "adult"]}, "camera_id": {"include": [1]}}
 
 Request: adult in a top that is not black
 JSON: {"age_group": {"include": ["adult"]}, "upper_color": {"exclude": ["black"]}}
 
-Request: guy in a crimson jacket and grey pants
-JSON: {"gender": {"include": ["male"]}, "upper_color": {"include": ["red"]}, "lower_color": {"include": ["gray"]}}
-
 Request: person with a backpack
 JSON: {}
 ===== END PROMPT =====
-
-
-
-# example filters by model
-
-{"gender":  {"include": ["female"]}, 
- "age_group": {"include": ["child"]},
-   "upper_color": {"include": ["pink"]}, 
-   "lower_color": {"include": ["blue"]}}

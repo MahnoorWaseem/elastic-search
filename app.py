@@ -98,7 +98,7 @@ def search_alerts(request: SearchRequest):
 
     # 2. Build the Elasticsearch query from the filters and run it.
     try:
-        output = search(es, filters)
+        output = search(es, filters, size=200)
     except Exception as error:
         # 503 = "a service we depend on isn't working" (here: Elasticsearch)
         raise HTTPException(status_code=503, detail=f"Elasticsearch problem: {error}")

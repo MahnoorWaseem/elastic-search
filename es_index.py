@@ -15,6 +15,10 @@ Everything about the Elasticsearch index:
 
 This file only contains functions. app.py calls ensure_index() at startup,
 and mqtt_listener.py calls save_to_index() for every new alert.
+
+1	mqtt_listener.py	receives the raw alert from MQTT
+2	flattener.py	flattens it, appends it to flattened_alerts.jsonl, and returns the flat document
+3	es_index.py	save_to_index() stores that document in the index
 """
 
 import logging

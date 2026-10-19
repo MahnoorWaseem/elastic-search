@@ -54,14 +54,62 @@
       },
       "additionalProperties": false
     },
-    "age": {
+    "color": {
       "type": "object",
       "properties": {
-        "min": {
-          "type": "integer"
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "black",
+              "white",
+              "gray",
+              "silver",
+              "red",
+              "maroon",
+              "orange",
+              "brown",
+              "beige",
+              "yellow",
+              "olive",
+              "green",
+              "dark green",
+              "teal",
+              "light blue",
+              "blue",
+              "navy",
+              "purple",
+              "pink"
+            ]
+          }
         },
-        "max": {
-          "type": "integer"
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "black",
+              "white",
+              "gray",
+              "silver",
+              "red",
+              "maroon",
+              "orange",
+              "brown",
+              "beige",
+              "yellow",
+              "olive",
+              "green",
+              "dark green",
+              "teal",
+              "light blue",
+              "blue",
+              "navy",
+              "purple",
+              "pink"
+            ]
+          }
         }
       },
       "additionalProperties": false
@@ -192,79 +240,13 @@
         "include": {
           "type": "array",
           "items": {
-            "type": "string",
-            "enum": [
-              "cam_1"
-            ]
+            "type": "integer"
           }
         },
         "exclude": {
           "type": "array",
           "items": {
-            "type": "string",
-            "enum": [
-              "cam_1"
-            ]
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    "color": {
-      "type": "object",
-      "properties": {
-        "include": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": [
-              "black",
-              "white",
-              "gray",
-              "silver",
-              "red",
-              "maroon",
-              "orange",
-              "brown",
-              "beige",
-              "yellow",
-              "olive",
-              "green",
-              "dark green",
-              "teal",
-              "light blue",
-              "blue",
-              "navy",
-              "purple",
-              "pink"
-            ]
-          }
-        },
-        "exclude": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": [
-              "black",
-              "white",
-              "gray",
-              "silver",
-              "red",
-              "maroon",
-              "orange",
-              "brown",
-              "beige",
-              "yellow",
-              "olive",
-              "green",
-              "dark green",
-              "teal",
-              "light blue",
-              "blue",
-              "navy",
-              "purple",
-              "pink"
-            ]
+            "type": "integer"
           }
         }
       },
