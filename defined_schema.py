@@ -40,6 +40,29 @@ COLORS = [
     "pink",
 ]
 
+# Colour families: when the LLM writes a broad colour, the query builder
+# also searches for its shades. Works for color, upper_color and lower_color,
+# in both include and exclude:
+#   include "red"  -> red OR maroon
+#   exclude "red"  -> not red AND not maroon
+#   include "navy" -> navy only (a specific shade stays specific)
+# Colours not listed here (black, white, orange, ...) only match themselves.
+# To change a family, edit only this dictionary.
+# Without the check, the server starts normally. When someone searches “red”, the shades are added (["red", "marron"]). But pick_values() only keeps values that are in COLORS, so it throws "marron" away. “Red” then searches only red, and maroon shirts are missed. The only sign is a warning line in the terminal on every search, which is easy to overlook
+COLOR_FAMILIES = {
+    "red": ["maroon"],
+    "blue": ["light blue", "navy"],
+    "green": ["dark green", "olive"],
+    "gray": ["silver"],
+    "brown": ["beige"],
+}
+
+# Safety check when the file loads: a typo above (e.g. "marron") would
+# silently match nothing, so the server refuses to start and says which one.
+for broad, shades in COLOR_FAMILIES.items():
+    for colour in [broad] + shades:
+        assert colour in COLORS, f"COLOR_FAMILIES: '{colour}' is not in COLORS"
+
 # Values the CV pipeline uses when it wasn't sure.
 # Nobody searches for an "uncertain" shirt, so we never store these.
 # "null" and "none" are here because the new pipeline sends them as TEXT,
@@ -57,7 +80,11 @@ DEFINED_SCHEMA = {
     "age_group": {
         "type": "enum",
         "values": ["adult", "child"],
-        "description": "child = 15 years old or younger, adult = 16 or older",
+        "description": (
+            "ONLY when the request says an age or a stage of life "
+            "(old, elderly, kid, teenager, 30 years old). "
+            "child = 15 years old or younger, adult = 16 or older"
+        ),
     },
     # "color" is only used when SEARCHING, it is never stored.
     # It covers queries like "person wearing red" where the user doesn't say

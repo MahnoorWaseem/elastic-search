@@ -1,40 +1,66 @@
 """
-query_builder.py
+query_builder_and_searcher.py
 
-Turns search filters (the JSON the LLM will write in step 4) into an
+Turns search filters (the JSON the LLM writes) into an
 Elasticsearch query, and runs it.
 
 The filters look like this. Every field is optional:
     {
         "gender":      {"include": ["female"]},
         "upper_color": {"exclude": ["black"]},
-        "color":       {"include": ["red"]},      <- top OR bottom is red
-        "age":         {"min": 20, "max": 34},
+        "color":       {"include": ["red"]},      <- top OR bottom is red (or maroon)
+        "age_group":   {"include": ["child"]},
         "camera_id":   {"include": [2]}
     }
 
 Like the other modules, this file only contains functions.
-run_query_builder.py calls them now; later the backend will call search()
-when the user presses the Search button.
+The backend calls search() when the user presses the Search button.
 """
 
 import logging
 
 from config import INDEX_NAME
-from defined_schema import DEFINED_SCHEMA
+from defined_schema import COLOR_FAMILIES, COLORS, DEFINED_SCHEMA
 
 log = logging.getLogger("query_builder")
 
 
 def allowed_values(field):
     """
-    The allowed values of a field, from search_schema.py.
+    The allowed values of a field, from defined_schema.py.
     "color" has no list of its own, so it borrows upper_color's colours.
     """
     rules = DEFINED_SCHEMA[field]
     if rules["type"] == "any_of":
         rules = DEFINED_SCHEMA[rules["fields"][0]]
     return rules["values"]
+
+
+def is_color_field(field):
+    """
+    True for color, upper_color and lower_color: the fields whose
+    allowed values are the colour list. Checked from defined_schema.py,
+    so a new colour field later is picked up automatically.
+    """
+    rules = DEFINED_SCHEMA[field]
+    return rules["type"] in ("enum", "any_of") and allowed_values(field) == COLORS
+
+
+# for each color given by llm, it adds its relevant shade example for blue it will add ["blue", "light blue", "navy"] and for black since there's no family it will remain black.
+def add_shades(colors):
+    """
+    A broad colour also brings its shades, using COLOR_FAMILIES:
+        ["red"]          -> ["red", "maroon"]
+        ["blue", "red"]  -> ["blue", "light blue", "navy", "red", "maroon"]
+        ["navy"]         -> ["navy"]      (a specific shade stays specific)
+        ["black"]        -> ["black"]     (no family)
+    """
+    result = []
+    for color in colors:
+        for item in [color] + COLOR_FAMILIES.get(color, []):
+            if item not in result:  # don't add the same colour twice
+                result.append(item)
+    return result
 
 
 def pick_values(field, include, exclude):
@@ -82,7 +108,7 @@ def build_query(filters):
     #  example filter  {
     #             "gender": {"include": ["female"]},
     #             "upper_color": {"include": ["black"]},
-    #             "age": {"min": 20, "max": 34},
+    #             "age_group": {"include": ["adult"]},
     #         }
     for field, wanted in filters.items():
         rules = DEFINED_SCHEMA.get(field)
@@ -113,14 +139,21 @@ def build_query(filters):
         if not include and not exclude:
             continue  # field sent, but nothing asked
 
-        # --- normal fields: gender, age_group, upper_color, lower_color, camera_id
+        # Colour families, for color, upper_color and lower_color, both lists:
+        #   include ["red"] -> red OR maroon
+        #   exclude ["red"] -> "not red" also means not maroon
+        if is_color_field(field):
+            include = add_shades(include)
+            exclude = add_shades(exclude)
+
+        # --- normal fields: gender, age_group, upper_color, lower_color
         if rules["type"] == "enum":
             clauses.append(terms_clause(field, pick_values(field, include, exclude)))
 
-        # --- camera_id: the LLM gives numbers, the real IDs are "cam_" + number
+        # --- camera_id: the LLM gives numbers, the real IDs are "camera_" + number
         elif rules["type"] == "number_id":
             if include:
-                ids = [rules["prefix"] + str(n) for n in include]  # 2 -> "cam_2"
+                ids = [rules["prefix"] + str(n) for n in include]  # 2 -> "camera_2"
                 clauses.append({"terms": {field: ids}})
             if exclude:
                 ids = [rules["prefix"] + str(n) for n in exclude]
@@ -157,6 +190,7 @@ def build_query(filters):
     return {"bool": {"filter": clauses}}
 
 
+# searches the built es query in elasticsearch db
 def search(es, filters, size=50):
     """
     Builds the query and runs it. Returns a dict the backend can later

@@ -77,6 +77,10 @@ EXAMPLES = [
         {"gender": {"include": ["male"]}, "upper_color": {"include": ["red"]}},
     ),
     (
+        "man in a blue pants",
+        {"gender": {"include": ["male"]}, "lower_color": {"include": ["blue"]}},
+    ),
+    (
         "an old man in a red shirt",
         {
             "gender": {"include": ["male"]},
