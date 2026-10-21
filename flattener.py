@@ -60,6 +60,24 @@ def to_date_text(value):
     return moment.astimezone(timezone.utc).isoformat(timespec="milliseconds")
 
 
+def make_alert_id(alert):
+    """
+    Why:     every alert needs an ID in Elasticsearch. Newer messages from the
+             CV pipeline have no "id" field, so we make one when it's missing.
+    Used by: flatten_person_attributes().
+
+    With an "id"    -> that id:                          "210"
+    Without an "id" -> camera + tracker + exact time:    "camera_1_2_2026-10-21T13:06:23.327111+00:00"
+
+    One person (tracker) on one camera can only be in one alert at one exact
+    moment, so this is unique. And the same message arriving twice gives the
+    same ID, so it still replaces itself instead of being saved twice.
+    """
+    if alert.get("id") is not None:
+        return str(alert["id"])
+    return f"{alert['camera_id']}_{alert['tracker_id']}_{alert['timestamp']}"
+
+
 def clean_attributes(alert_id, raw):
     """
     Keeps only the values the schema allows.
@@ -105,7 +123,8 @@ def clean_attributes(alert_id, raw):
 def flatten_person_attributes(alert):
     """One person-attributes alert in, one flat document out."""
     # Elasticsearch IDs are text, so 210 becomes "210".
-    alert_id = str(alert["id"])
+    # alert_id = str(alert["id"])
+    alert_id = make_alert_id(alert)
 
     # Part 1: copied as they are (not CV guesses, so nothing to check).
     doc = {

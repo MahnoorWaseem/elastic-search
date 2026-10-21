@@ -116,4 +116,18 @@ DEFINED_SCHEMA = {
         "prefix": "camera_",
         "description": "the camera number the user mentions (camera 2 -> 2)",
     },
+    # "time" is only used when SEARCHING, it is never stored (like "color").
+    # It has its OWN LLM call with its own short prompt (time_parser.py), so
+    # the attribute prompt in llm_parser.py skips it. The answer is a list of
+    # windows in Pakistan time, for example "today" ->
+    #     [{"from_date": "2026-10-20", "from_time": "00:00",
+    #       "to_date":   "2026-10-20", "to_time":   "23:59"}]
+    # The query builder searches the alert's "timestamp" field with them.
+    "time": {
+        "type": "time",
+        "field": "timestamp",  # the stored field that time searches look at
+        "description": (
+            "when the person was seen: a day, a date, a clock time or a part of the day"
+        ),
+    },
 }

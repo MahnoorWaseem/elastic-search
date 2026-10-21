@@ -16,3 +16,6 @@ gmqtt>=0.7
 
 # Reads the settings in the .env file.
 python-dotenv>=1.0
+
+# Time zone data. Windows has none built in, and Python needs it for "Asia/Karachi".
+tzdata>=2024.1
