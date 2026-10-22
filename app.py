@@ -65,8 +65,11 @@ def add_image_urls(results):
     An alert without an image_key, or a link that can't be made, gets None,
     and the page shows "—" instead of an image.
     """
+
     for alert in results:
-        key = alert.get("image_key")
+        key = alert.pop(
+            "image_key", None
+        )  # remove it from the result, keep it for the link
         alert["image_url"] = None
         if not key:
             continue
@@ -109,6 +112,7 @@ class SearchRequest(BaseModel):
     FastAPI checks that "text" is there and is a string."""
 
     text: str
+    debug: bool = False
 
 
 @app.post("/api/search")
@@ -143,12 +147,14 @@ def search_alerts(request: SearchRequest):
         # 503 = "a service we depend on isn't working" (here: Elasticsearch)
         raise HTTPException(status_code=503, detail=f"Elasticsearch problem: {error}")
 
-    return {
+    response = {
         "text": text,
-        "filters": filters,  # what the LLM understood
-        "es_query": output[
-            "es_query"
-        ],  # what we sent to Elasticsearch (None = nothing to search)
-        # the matching alerts, newest first, each with an "image_url" to show
         "results": add_image_urls(output["results"]),
     }
+
+    # Only in debug mode: show how the search was understood.
+    if request.debug:
+        response["filters"] = filters
+        response["es_query"] = output["es_query"]  # None = nothing to search
+
+    return response

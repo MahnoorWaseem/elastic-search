@@ -47,6 +47,17 @@
     }
     button:disabled { opacity: 0.6; cursor: wait; }
 
+    /* The Debug checkbox next to the Search button */
+    .debug-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+      color: #5b6475;
+      cursor: pointer;
+      user-select: none;
+    }
+
     .status { margin-top: 8px; font-size: 14px; color: #5b6475; min-height: 1.2em; }
     .status.error { color: #b42318; }
 
@@ -96,11 +107,15 @@
     <form id="searchForm" class="row">
       <input id="searchText" type="text" placeholder="e.g. woman in a black top" autocomplete="off">
       <button id="searchBtn" type="submit">Search</button>
+      <label class="debug-toggle">
+        <input id="debugBox" type="checkbox"> Debug
+      </label>
     </form>
     <div id="searchStatus" class="status"></div>
   </div>
 
-  <!-- 2. How the search was understood: LLM filters and the Elasticsearch query -->
+  <!-- 2. How the search was understood: LLM filters and the Elasticsearch query.
+          Only shown when Debug is ticked. -->
   <div id="details" class="grid hidden">
     <div class="card">
       <h2>Filters from the LLM</h2>
@@ -134,6 +149,7 @@
   const searchForm   = document.getElementById("searchForm");
   const searchText   = document.getElementById("searchText");
   const searchBtn    = document.getElementById("searchBtn");
+  const debugBox     = document.getElementById("debugBox");
   const searchStatus = document.getElementById("searchStatus");
   const details      = document.getElementById("details");
   const filtersBox   = document.getElementById("filtersBox");
@@ -182,7 +198,12 @@
     searchBtn.disabled = true;
     setStatus(searchStatus, "Asking the LLM... (this can take a few seconds on a CPU)");
     try {
-      const data = await postJSON("/api/search", { text: text });
+      // "debug" tells the backend whether to also send the filters and the
+      // Elasticsearch query, or only the text and the results.
+      const data = await postJSON("/api/search", {
+        text: text,
+        debug: debugBox.checked,
+      });
       setStatus(searchStatus, "");
       showResults(data);
     } catch (error) {
@@ -193,17 +214,16 @@
 
   // Puts the search answer on the page.
   function showResults(data) {
-    // The two "how it was understood" boxes.
-    filtersBox.textContent = JSON.stringify(data.filters, null, 2);
-    queryBox.textContent = data.es_query
-      ? JSON.stringify(data.es_query, null, 2)
-      : "No query was run: nothing searchable was found in your text.";
-    details.classList.remove("hidden");
-
-    // Nothing to search by: no results table at all.
-    if (data.es_query === null) {
-      resultsCard.classList.add("hidden");
-      return;
+    // The two "how it was understood" boxes: only when the backend sent them
+    // (that is, when Debug was on).
+    if (data.filters !== undefined) {
+      filtersBox.textContent = JSON.stringify(data.filters, null, 2);
+      queryBox.textContent = data.es_query
+        ? JSON.stringify(data.es_query, null, 2)
+        : "No query was run: nothing searchable was found in your text.";
+      details.classList.remove("hidden");
+    } else {
+      details.classList.add("hidden");
     }
 
     // Fill the results table.
@@ -213,7 +233,9 @@
       const row = document.createElement("tr");
       row.appendChild(imageCell(alert));
       const cells = [
-        new Date(alert.timestamp).toLocaleString(),   // UTC -> your local time
+        // The time exactly as stored, no time-zone conversion:
+        // "2026-10-21T13:14:17.561+00:00" -> "2026-10-21 13:14:17"
+        alert.timestamp ? alert.timestamp.replace("T", " ").slice(0, 19) : null,
         alert.camera_id,
         alert.gender,
         alert.age_group,
