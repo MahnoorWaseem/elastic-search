@@ -130,7 +130,7 @@ def one_range(field, start, end):
             field: {
                 "gte": start.isoformat(),  # e.g. "2026-10-16T17:00:00"
                 "lt": end.isoformat(),
-                "time_zone": TIMEZONE,
+                # "time_zone": TIMEZONE,
             }
         }
     }

@@ -4,9 +4,6 @@
 # so we pin it to 8.17.x. A 9.x client would refuse to talk to an 8.x server.
 elasticsearch>=8.17,<8.18
 
-# Sends HTTP requests. We use it to talk to Ollama.
-requests>=2.31
-
 # The backend: FastAPI makes the API, uvicorn runs it as a web server.
 fastapi>=0.115
 uvicorn>=0.30
@@ -19,3 +16,20 @@ python-dotenv>=1.0
 
 # Time zone data. Windows has none built in, and Python needs it for "Asia/Karachi".
 tzdata>=2024.1
+
+# Talking to the LLM: ollama_client.py uses the OpenAI client (Ollama's /v1
+# address), wrapped by Langfuse so every LLM call is also traced in Langfuse.
+openai>=1.50
+langfuse>=3.0
+
+# SeaweedFS (where the snapshot images are) speaks the S3 language;
+# boto3 is the S3 client that seaweed_client.py uses.
+boto3>=1.34
+
+# seaweed_client.py imports cv2 (OpenCV) at the top, so it must be installed,
+# even though the search only makes image links. "headless" = without the
+# desktop-window parts, which a server doesn't need.
+opencv-python-headless>=4.8
+
+# Only used by older test scripts that talk to Ollama directly.
+requests>=2.31

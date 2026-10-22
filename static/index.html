@@ -73,6 +73,17 @@
     th { color: #5b6475; font-weight: 600; }
 
     .hidden { display: none; }
+
+    /* The snapshot in the results table, with the person's box drawn on top. */
+    td { vertical-align: middle; }
+    .snap { position: relative; display: block; width: 160px; }
+    .snap img { display: block; width: 100%; border-radius: 4px; background: #eef0f3; }
+    .snap .box {
+      position: absolute;
+      border: 2px solid #22c55e;
+      box-sizing: border-box;
+      pointer-events: none;     /* clicks go to the image link underneath */
+    }
   </style>
 </head>
 
@@ -108,7 +119,7 @@
       <table>
         <thead>
           <tr>
-            <th>Time</th><th>Camera</th><th>Gender</th>
+            <th>Image</th><th>Time</th><th>Camera</th><th>Gender</th>
             <th>Age group</th><th>Top</th><th>Bottom</th>
           </tr>
         </thead>
@@ -139,7 +150,17 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body || {}),
     });
-    const data = await response.json();
+    // Read the answer as text first: when the backend crashes it sends plain
+    // text ("Internal Server Error"), not JSON, and response.json() would fail
+    // with a confusing "Unexpected token" message.
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(`Server error ${response.status}: ${text.slice(0, 200)} ` +
+                      "(the details are in the terminal where uvicorn runs)");
+    }
     if (!response.ok) {
       throw new Error(data.detail || "Something went wrong.");
     }
@@ -190,6 +211,7 @@
     resultsBody.innerHTML = "";
     for (const alert of data.results) {
       const row = document.createElement("tr");
+      row.appendChild(imageCell(alert));
       const cells = [
         new Date(alert.timestamp).toLocaleString(),   // UTC -> your local time
         alert.camera_id,
@@ -200,7 +222,7 @@
       ];
       for (const value of cells) {
         const cell = document.createElement("td");
-        // A missing value means the CV pipeline was "uncertain" or "null".
+        // A missing value means the CV pipeline was "uncertain".
         cell.textContent = value ?? "—";
         row.appendChild(cell);
       }
@@ -210,7 +232,7 @@
     if (data.results.length === 0) {
       const row = document.createElement("tr");
       const cell = document.createElement("td");
-      cell.colSpan = 6;
+      cell.colSpan = 7;
       cell.textContent = "No alerts match this search.";
       row.appendChild(cell);
       resultsBody.appendChild(row);
@@ -218,6 +240,48 @@
 
     resultsTitle.textContent = `Results (${data.results.length})`;
     resultsCard.classList.remove("hidden");
+  }
+
+  // The first cell of a result row: the snapshot, with a green box around
+  // the person this alert is about. Several alerts can share ONE snapshot
+  // (several people in the same frame), so the box shows which one it is.
+  // Clicking the image opens it full size in a new tab.
+  function imageCell(alert) {
+    const cell = document.createElement("td");
+    if (!alert.image_url) {
+      cell.textContent = "—";
+      return cell;
+    }
+
+    const link = document.createElement("a");
+    link.href = alert.image_url;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.className = "snap";
+
+    const img = document.createElement("img");
+    img.src = alert.image_url;   // the browser loads it straight from SeaweedFS
+    img.alt = "snapshot";
+    img.loading = "lazy";        // only load images when they scroll into view
+    // SeaweedFS not reachable, or the image is missing: say so instead of a broken icon.
+    img.onerror = () => { cell.textContent = "image not available"; };
+    link.appendChild(img);
+
+    // box = [left, top, right, bottom], each a fraction of the image (0 to 1),
+    // so it becomes a percentage of the picture's width and height.
+    if (Array.isArray(alert.box) && alert.box.length === 4) {
+      const [x1, y1, x2, y2] = alert.box;
+      const box = document.createElement("div");
+      box.className = "box";
+      box.style.left = `${x1 * 100}%`;
+      box.style.top = `${y1 * 100}%`;
+      box.style.width = `${(x2 - x1) * 100}%`;
+      box.style.height = `${(y2 - y1) * 100}%`;
+      link.appendChild(box);
+    }
+
+    cell.appendChild(link);
+    return cell;
   }
 </script>
 </body>
