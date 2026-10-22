@@ -37,198 +37,175 @@ log = logging.getLogger("llm_parser")
 # The prompt (layer 1)
 # ---------------------------------------------------------------------------
 
-INSTRUCTIONS = """You turn a search request about people seen on security cameras into JSON filters.
-Do not answer the request. Only write the JSON.
-You need to understand the search request and use only the fields that are given below (with description) according to what is asked in the text. You can only use the values that are given below for each field"""
+INSTRUCTIONS = """You convert a search request about people on security cameras into JSON filters.
+Output ONLY one JSON object. Never answer or explain the request.
+Use only the fields and values listed below. Add a field ONLY if the request says something about it.
+If the request has nothing searchable, output {}."""
 
-RULES = """How to write each field: {"include": [...], "exclude": [...]}
-How to write each field: {"include": [...], "exclude": [...]}
-For EACH value, check if the user says NOT to it:
-- not, no, without, except, other than, neither/nor -> that value goes in "exclude"
-- no such word -> that value goes in "include" (this is the normal case)
-A "not" only belongs to the value it is about. Every other value stays in "include".
-Pairs, where the only difference is the word "not":
-  a woman in green                    -> "color": {"include": ["green"]}
-  a woman not in green                -> "color": {"exclude": ["green"]}
-  a woman in green or white           -> "color": {"include": ["green", "white"]}
-  a woman in neither green nor white  -> "color": {"exclude": ["green", "white"]}
-  a man in a black shirt              -> "upper_color": {"include": ["black"]}
-  a man in a shirt that is not black  -> "upper_color": {"exclude": ["black"]}
-  a woman on camera 1                 -> "camera_id": {"include": [1]}
-  a woman not on camera 1             -> "camera_id": {"exclude": [1]}
-
+RULES = """Format: every field is {"include": [...], "exclude": [...]}. Leave out the one that is empty.
+- "include" is the normal case.
+- "exclude" only when a negative word is attached to that value: not, no, without, except, other than, neither/nor.
+  A negative word affects only its own value. Everything else stays in "include".
+- "a or b" -> both in the same list. "neither a nor b" -> both in "exclude".
+ 
 Rules:
-1. Use only the values listed above, spelled exactly the same.
-2. Only add fields the user actually mentioned. Never guess.
-3. color: A color with NO top or bottom word (a woman in brown, man wearing red) -> color.
-   Never use upper_color or lower_color unless the user names the clothing.
-4. upper_color: if there Top words like  shirt, t-shirt, top, jacket, hoodie, coat, sweater-> use upper_color instead of color.
-   lower_color: Bottom words like pants, trousers, jeans, shorts, skirt-> use lower_color instead of color.
-5. A color that is not in the list -> use the closest listed color (crimson -> red, grey -> gray, dark blue -> navy)
-6. gender: man, guy, boy -> gender male. woman, lady, girl -> gender female
-7. age_group: age_group ONLY when the request says an age or a stage of life.
-   man, woman, guy, lady, boy, girl, person, people, someone are NOT age words:
-   "a man in a green shirt" has NO age_group.
-   child: kid, child, baby, toddler, little boy, little girl, teenager, teen,
-          youth, young person, or an age of 15 or younger (a 14 year old, under 12)
-   adult: adult, grown-up, old, elderly, senior, middle-aged, young man, young woman,
-          or an age of 16 or older (a 30 year old, above 15, over 20)
-8. camera_id ONLY when the word camera or cam comes before the number:
-   camera 2, cam 2, cam2, camera number 2 -> camera_id with the number only: 2
-   Every other number is NOT a camera: dates (9 oct, 12/10), times (5pm, at 7), ages (a 14 year old).
-   "a girl in pink on 9 oct" has NO camera_id.
-9. Ignore everything else (times, dates, bags, hats, actions). If nothing matches, write {}"""
+1. Use values exactly as listed. A colour that is not listed -> the closest listed colour
+   (crimson -> red, grey -> gray, dark blue -> navy, violet -> purple, tan -> beige).
+2. gender: man, guy, boy, gentleman -> male. woman, lady, girl -> female.
+   person, people, someone, anyone -> no gender.
+3. age_group: only if the request says an age or a stage of life. Plain person words
+   (man, woman, boy, girl, guy, lady, person) are NOT age words.
+   child: kid, child, baby, toddler, teen, teenager, youth, or an age of 15 or younger.
+   adult: adult, old, elderly, senior, middle-aged, young man, young woman, or an age of 16 or older.
+4. Colour field: look at the clothing word next to the colour.
+   top word (shirt, t-shirt, top, jacket, hoodie, coat, sweater) -> upper_color
+   bottom word (pants, trousers, jeans, shorts, skirt, bottoms) -> lower_color
+   no clothing word (in red, wearing blue, not in pink) -> color
+5. camera_id: only when the word camera or cam is directly followed by a number
+   (camera 2, cam 2, cam2, camera number 2). Write the number only.
+   Several numbers are allowed: "camera 2 or 4" -> [2, 4].
+   Every other number is NOT a camera: dates (3 november), times (7 pm), ages (12 year old).
+6. Ignore dates, times, days, bags, hats, glasses and actions."""
 
+# Key order in every answer = order of DEFINED_SCHEMA.
 EXAMPLES = [
-    # --- pairs: plain person word -> no age_group, age word -> age_group ---
+    # --- the exact case that failed: person + camera, no colour. Must NOT invent a colour ---
     (
-        "man in a red shirt",
-        {"gender": {"include": ["male"]}, "upper_color": {"include": ["red"]}},
+        "a person in a black shirt",
+        {"upper_color": {"include": ["black"]}},
     ),
     (
-        "man in a blue pants",
-        {"gender": {"include": ["male"]}, "lower_color": {"include": ["blue"]}},
+        "a person in a shirt that is not black",
+        {"upper_color": {"exclude": ["black"]}},
     ),
     (
-        "an old man in a red shirt",
-        {
-            "gender": {"include": ["male"]},
-            "age_group": {"include": ["adult"]},
-            "upper_color": {"include": ["red"]},
-        },
+        "people in a white top",
+        {"upper_color": {"include": ["white"]}},
     ),
     (
-        "a woman on camera 2",
-        {"gender": {"include": ["female"]}, "camera_id": {"include": [2]}},
+        "a man on camera 2",
+        {"gender": {"include": ["male"]}, "camera_id": {"include": [2]}},
+    ),
+    # --- colour field choice: color / upper_color / lower_color ---
+    (
+        "woman in red",
+        {"gender": {"include": ["female"]}, "color": {"include": ["red"]}},
     ),
     (
-        "an elderly woman on camera 2",
-        {
-            "gender": {"include": ["female"]},
-            "age_group": {"include": ["adult"]},
-            "camera_id": {"include": [2]},
-        },
-    ),
-    # --- plain person words: gender only, never age_group ---
-    (
-        "a guy in a black or gray hoodie on camera 3",
-        {
-            "gender": {"include": ["male"]},
-            "upper_color": {"include": ["black", "gray"]},
-            "camera_id": {"include": [3]},
-        },
+        "man in a blue shirt",
+        {"gender": {"include": ["male"]}, "upper_color": {"include": ["blue"]}},
     ),
     (
-        "girl with a pink top and blue jeans",
+        "lady wearing a green skirt",
+        {"gender": {"include": ["female"]}, "lower_color": {"include": ["green"]}},
+    ),
+    (
+        "girl in a yellow top and brown jeans",
         {
             "gender": {"include": ["female"]},
-            "upper_color": {"include": ["pink"]},
-            "lower_color": {"include": ["blue"]},
+            "upper_color": {"include": ["yellow"]},
+            "lower_color": {"include": ["brown"]},
         },
     ),
+    # --- several colours, no gender word ---
     (
-        "a girl wearing blue on camera 2",
-        {
-            "gender": {"include": ["female"]},
-            "color": {"include": ["blue"]},
-            "camera_id": {"include": [2]},
-        },
+        "someone in a white or gray hoodie",
+        {"upper_color": {"include": ["white", "gray"]}},
+    ),
+    # --- exclusion: the "not" belongs only to its own value ---
+    (
+        "a woman not in pink",
+        {"gender": {"include": ["female"]}, "color": {"exclude": ["pink"]}},
     ),
     (
-        "a girl wearing pink",
-        {"gender": {"include": ["female"]}, "color": {"include": ["pink"]}},
-    ),
-    (
-        "a girl wearing a pink top",
-        {"gender": {"include": ["female"]}, "upper_color": {"include": ["pink"]}},
-    ),
-    (
-        "a man in a top that is black",
-        {"gender": {"include": ["male"]}, "upper_color": {"include": ["black"]}},
-    ),
-    (
-        "a man in a top that is not black",
+        "a man in a shirt that is not black",
         {"gender": {"include": ["male"]}, "upper_color": {"exclude": ["black"]}},
     ),
-    ("person wearing red jacket", {"upper_color": {"include": ["red"]}}),
-    ("someone not wearing black", {"color": {"exclude": ["black"]}}),
-    # --- age words and numbers ---
     (
-        "a 14 year old in a white or gray hoodie",
+        "guy in neither green nor white",
+        {"gender": {"include": ["male"]}, "color": {"exclude": ["green", "white"]}},
+    ),
+    # --- age_group: only with an age word or a number ---
+    (
+        "an elderly man in navy pants",
         {
-            "age_group": {"include": ["child"]},
-            "upper_color": {"include": ["white", "gray"]},
+            "gender": {"include": ["male"]},
+            "age_group": {"include": ["adult"]},
+            "lower_color": {"include": ["navy"]},
         },
     ),
     (
-        "people above 15 in a black top",
-        {"age_group": {"include": ["adult"]}, "upper_color": {"include": ["black"]}},
+        "a 12 year old girl",
+        {"gender": {"include": ["female"]}, "age_group": {"include": ["child"]}},
     ),
     (
-        "young man in a crimson jacket and grey pants",
+        "kid in a red jacket",
+        {"age_group": {"include": ["child"]}, "upper_color": {"include": ["red"]}},
+    ),
+    (
+        "people between 10 and 20",
+        {"age_group": {"include": ["child", "adult"]}},
+    ),
+    (
+        "anyone under 12 on camera 5",
+        {"age_group": {"include": ["child"]}, "camera_id": {"include": [5]}},
+    ),
+    # --- colour mapping to the closest listed colour ---
+    (
+        "young woman in a crimson jacket and grey pants",
         {
-            "gender": {"include": ["male"]},
+            "gender": {"include": ["female"]},
             "age_group": {"include": ["adult"]},
             "upper_color": {"include": ["red"]},
             "lower_color": {"include": ["gray"]},
         },
     ),
-    ("kid in jeans", {"age_group": {"include": ["child"]}}),
+    # --- camera: every spelling, lists, exclusion, camera alone ---
     (
-        "teenager in a blue top",
-        {"age_group": {"include": ["child"]}, "upper_color": {"include": ["blue"]}},
-    ),
-    (
-        "people between 10 and 20 on camera 1",
-        {"age_group": {"include": ["child", "adult"]}, "camera_id": {"include": [1]}},
-    ),
-    # --- time words are ignored here (time_parser.py finds the time) ---
-    (
-        "a lady in brown yesterday at 5 pm",
-        {"gender": {"include": ["female"]}, "color": {"include": ["brown"]}},
-    ),
-    (
-        "a guy in a black jacket on camera 2 last night",
+        "a lady in black on camera 2",
         {
-            "gender": {"include": ["male"]},
-            "upper_color": {"include": ["black"]},
+            "gender": {"include": ["female"]},
+            "color": {"include": ["black"]},
             "camera_id": {"include": [2]},
         },
     ),
-    # --- pairs: a number is a camera ONLY right after "camera" / "cam" ---
     (
-        "a lady in pink on 3 november",
-        {"gender": {"include": ["female"]}, "color": {"include": ["pink"]}},
+        "person in orange on cam3",
+        {"color": {"include": ["orange"]}, "camera_id": {"include": [3]}},
     ),
     (
-        "a lady in pink on camera 3",
-        {
-            "gender": {"include": ["female"]},
-            "color": {"include": ["pink"]},
-            "camera_id": {"include": [3]},
-        },
-    ),
-    (
-        "a man in a blue shirt at 4 pm on cam 1",
+        "a man in a purple shirt on camera 2 or 4",
         {
             "gender": {"include": ["male"]},
-            "upper_color": {"include": ["blue"]},
-            "camera_id": {"include": [1]},
+            "upper_color": {"include": ["purple"]},
+            "camera_id": {"include": [2, 4]},
         },
     ),
-    ("a boy at 7 on 7 oct", {"gender": {"include": ["male"]}}),
+    (
+        "boy not on camera 1",
+        {"gender": {"include": ["male"]}, "camera_id": {"exclude": [1]}},
+    ),
+    ("camera 4", {"camera_id": {"include": [4]}}),
+    # --- numbers that are NOT cameras (dates, times), next to ones that are ---
+    (
+        "woman in beige on 3 november at 7 pm",
+        {"gender": {"include": ["female"]}, "color": {"include": ["beige"]}},
+    ),
     (
         "a boy at 7 on cam 15",
+        {"gender": {"include": ["male"]}, "camera_id": {"include": [15]}},
+    ),
+    # --- time words are ignored here (time_parser.py handles them) ---
+    (
+        "a man in a pink hoodie on camera 2 last night",
         {
             "gender": {"include": ["male"]},
-            "camera_id": {"include": [15]},
+            "upper_color": {"include": ["pink"]},
+            "camera_id": {"include": [2]},
         },
     ),
+    ("a man yesterday", {"gender": {"include": ["male"]}}),
     # --- nothing searchable ---
-    (
-        "adult in a top that is not black",
-        {"age_group": {"include": ["adult"]}, "upper_color": {"exclude": ["black"]}},
-    ),
     ("person with a backpack", {}),
 ]
 
@@ -242,11 +219,6 @@ def build_prompt():
     for field, rules in DEFINED_SCHEMA.items():
         if rules["type"] == "time":
             continue  # time has its own prompt in time_parser.py
-        if rules["type"] == "range":
-            field_lines.append(
-                f"- {field}: {rules['description']}. "
-                'Write it as {"min": number, "max": number}'
-            )
         elif rules["type"] == "number_id":
             # No list of values here: any number is allowed.
             field_lines.append(
@@ -268,9 +240,6 @@ def build_prompt():
         + "\n\nExamples:\n"
         + "\n\n".join(example_lines)
     )
-    print("===== PROMPT =====")
-    print(prompt)
-    print("===== END PROMPT =====")
     return prompt
 
 
@@ -442,12 +411,13 @@ def parse_query(text, now=None):
     # Question 1: the attributes.
     # raw filters
     attributes, _thinking = ask_attributes(text)
+    print("raw1 filters for person attributes", attributes)
     # cleaned filters
     filters = clean_filters(attributes)
-    print("filters for person attributes", filters)
+    print("cleaned filters for person attributes", filters)
     # Question 2: the time.
     time_answer, _thinking = ask_time(text, now)
-    print("filters for time attributes", time_answer)
+    print("raw2 filters for time attributes", time_answer)
     windows = clean_time(time_answer, now)
     print("cleaned filters for time attributes", windows)
     if windows:

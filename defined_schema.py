@@ -114,15 +114,8 @@ DEFINED_SCHEMA = {
         # Any number is allowed, so nothing gets forced. “camera 2” now searches cam_2 and correctly returns 0 results, since your data only has cam_1.
         "type": "number_id",
         "prefix": "camera_",
-        "description": "the camera number the user mentions (camera 2 -> 2)",
+        "description": "the camera number the person was seen on, only when the text says camera or cam (cam 2 -> 2, camera 5 -> 5)",
     },
-    # "time" is only used when SEARCHING, it is never stored (like "color").
-    # It has its OWN LLM call with its own short prompt (time_parser.py), so
-    # the attribute prompt in llm_parser.py skips it. The answer is a list of
-    # windows in Pakistan time, for example "today" ->
-    #     [{"from_date": "2026-10-20", "from_time": "00:00",
-    #       "to_date":   "2026-10-20", "to_time":   "23:59"}]
-    # The query builder searches the alert's "timestamp" field with them.
     "time": {
         "type": "time",
         "field": "timestamp",  # the stored field that time searches look at

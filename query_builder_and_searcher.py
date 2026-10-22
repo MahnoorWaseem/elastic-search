@@ -23,7 +23,7 @@ The backend calls search() when the user presses the Search button.
 import logging
 from datetime import datetime, timedelta
 
-from config import INDEX_NAME, TIMEZONE
+from config import INDEX_NAME
 from defined_schema import COLOR_FAMILIES, COLORS, DEFINED_SCHEMA
 
 log = logging.getLogger("query_builder")
@@ -122,15 +122,14 @@ def one_range(field, start, end):
     Used by: time_clause().
 
     "gte" = from this moment, "lt" = up to (not including) this moment.
-    The times are Pakistan times. "time_zone" tells Elasticsearch that, and
-    it converts them to UTC before comparing with the stored timestamps.
+    No time-zone conversion: the times are compared exactly as written with
+    the stored timestamps. "14:00" in the filter finds alerts stored at 14:xx.
     """
     return {
         "range": {
             field: {
                 "gte": start.isoformat(),  # e.g. "2026-10-16T17:00:00"
                 "lt": end.isoformat(),
-                # "time_zone": TIMEZONE,
             }
         }
     }
@@ -301,7 +300,7 @@ def build_query(filters):
 
 
 # searches the built es query in elasticsearch db
-def search(es, filters, size=50):
+def search(es, filters, size=500):
     """
     Builds the query and runs it. Returns a dict the backend can later
     send straight to the UI:

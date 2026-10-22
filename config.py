@@ -53,6 +53,7 @@ OLLAMA_URL = "http://localhost:11434"
 # OLLAMA_TIME_MODEL = "hf.co/HauhauCS/Qwen3.8-27B-Uncensored-HauhauCS-Aggressive-MTP-GGUF:IQ2_M"  # time (time_parser.py)
 
 OLLAMA_MODEL = "qwen3.5:2b"  # attributes (llm_parser.py)
+# OLLAMA_MODEL = "qwen3:4b-instruct-2507-q4_K_M"  # attributes (llm_parser.py)
 OLLAMA_TIME_MODEL = "qwen3:4b-instruct-2507-q4_K_M"  # time (time_parser.py)
 
 # Let the model think (write its reasoning) before it writes the JSON.

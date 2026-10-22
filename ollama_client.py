@@ -134,7 +134,7 @@ def ask_ollama(model, system_prompt, user_message, json_schema):
     """
     # On /v1, thinking is turned off with reasoning_effort "none".
     # ("think" is not a /v1 field, so Ollama ignores it.)
-    extra_body = {"options": {"num_ctx": 8192}, "keep_alive": "30m"}
+    extra_body = {"options": {"num_ctx": 4096}, "keep_alive": "30m"}
     if not OLLAMA_THINK:
         extra_body["reasoning_effort"] = "none"
 
@@ -205,45 +205,3 @@ def ask_ollama(model, system_prompt, user_message, json_schema):
             answer,
         )
         return {}, thinking
-
-
-# --------------------------------------------------
-# Example usage
-# --------------------------------------------------
-
-# if __name__ == "__main__":
-#     system_prompt = """
-#     You are a helpful assistant.
-#     Answer the user's question.
-#     Always return valid JSON matching the schema.
-#     """
-
-#     user_message = "What is the capital of Pakistan?"
-
-#     json_schema = {
-#         "type": "object",
-#         "properties": {
-#             "answer": {"type": "string"},
-#             "confidence": {"type": "number"},
-#         },
-#         "required": ["answer", "confidence"],
-#         "additionalProperties": False,
-#     }
-
-#     try:
-#         answer, thinking = ask_ollama(
-#             model=OLLAMA_MODEL,
-#             system_prompt=system_prompt,
-#             user_message=user_message,
-#             json_schema=json_schema,
-#         )
-
-#         print("\nANSWER:")
-#         print(json.dumps(answer, indent=2))
-
-#         print("\nTHINKING:")
-#         print(thinking or "Not available")
-
-#     finally:
-#         # Ensure traces are delivered to Langfuse
-#         langfuse.flush()

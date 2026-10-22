@@ -11,24 +11,23 @@ For every search, llm_parser.parse_query() calls two functions from here:
     ask_time(text, now)      -> asks the model, returns its answer
     clean_time(answer, now)  -> checks the answer, returns [window] or []
 
-The system prompt has two parts:
-    1. the rules: always the same
-    2. the facts for this search, at the END: the current date and time, the
-       last 7 days with their weekday names, and the time of the first and
-       the last alert stored in Elasticsearch.
-The facts are at the end on purpose: Ollama reuses the part of the prompt
-that didn't change since the last search, so only the facts are re-read.
+The system prompt is RULES, with the facts for this search put in at {FACTS}
+(by facts_text(), on every search): now, today, yesterday, the first and the
+last alert stored in Elasticsearch, and the most recent date of each weekday.
+Everything in RULES before {FACTS} stays the same between searches, so Ollama
+can reuse that part.
 
-The model answers with ONE window, in Pakistan time:
+There is NO time-zone conversion anywhere: the model writes times exactly
+as the user says them, and they are compared as they are with the stored
+timestamps. The model answers with ONE window:
     {"time": {"from_date": "2026-10-20", "from_time": "00:00",
               "to_date":   "2026-10-20", "to_time":   "23:59"}}
 """
 
 import logging
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta, timezone
 
-from config import INDEX_NAME, OLLAMA_TIME_MODEL, TIMEZONE
+from config import INDEX_NAME, OLLAMA_TIME_MODEL
 from es_index import get_client
 from ollama_client import ask_ollama
 
@@ -46,24 +45,29 @@ _es = get_client()
 
 def current_time():
     """
-    Why:     every time a user types ("today", "last 2 hours") means Pakistan
-             time, so "now" must be Pakistan time too.
+    Why:     "today", "yesterday" and "at 9 pm hasn't happened yet" need "now".
+             It must be on the SAME clock as the stored alerts, and the CV
+             pipeline sends their times in UTC (+00:00). So "now" is read on
+             the UTC clock too. Nothing is converted: it's just the clock the
+             data uses. (Your computer's clock is 5 hours ahead of it, so
+             "today" would start 5 hours off with it.)
     Used by: ask_time() and llm_parser.parse_query(), on every real search.
 
-    Returns now in Pakistan without seconds, e.g. 2026-10-20 12:42.
+    Returns now on the UTC clock, without seconds, e.g. 2026-10-22 06:41.
     """
-    now = datetime.now(ZoneInfo(TIMEZONE))
+    now = datetime.now(timezone.utc)
     return now.replace(tzinfo=None, second=0, microsecond=0)
 
 
-def pakistan_time(milliseconds):
+def stored_time(milliseconds):
     """
-    Why:     Elasticsearch gives dates as milliseconds since 1970 in UTC.
+    Why:     Elasticsearch gives dates as milliseconds since 1970. This turns
+             them back into the date and time exactly as they are stored.
     Used by: first_and_last_alert().
 
-    1760555381008 -> 2026-10-16 00:09 (Pakistan time)
+    1792091381008 -> 2026-10-15 19:09   (the same as the stored "2026-10-15T19:09:41Z")
     """
-    moment = datetime.fromtimestamp(milliseconds / 1000, ZoneInfo(TIMEZONE))
+    moment = datetime.fromtimestamp(milliseconds / 1000, timezone.utc)
     return moment.replace(tzinfo=None, second=0, microsecond=0)
 
 
@@ -74,7 +78,7 @@ def first_and_last_alert():
     Used by: ask_time(), on every search (new alerts keep arriving).
 
     Asks Elasticsearch for the oldest (min) and newest (max) alert timestamp.
-    Returns them in Pakistan time, e.g. (2026-10-16 00:09, 2026-10-20 12:30),
+    Returns them as stored, e.g. (2026-10-15 19:09, 2026-10-21 13:14),
     or (None, None) if there are no alerts or Elasticsearch can't be reached.
     When the user doesn’t say a date exactly, the model picks dates inside this range. When the user does say a date exactly, it keeps it, even if it’s outside the range.
     """
@@ -95,14 +99,13 @@ def first_and_last_alert():
     last = response["aggregations"]["last"]["value"]
     if first is None or last is None:
         return None, None
-    return pakistan_time(first), pakistan_time(last)
+    return stored_time(first), stored_time(last)
     # "aggregations": {
     #   "first": {"value": 1792091381008, "value_as_string": "2026-10-15T19:09:41.008Z"},
     #   "last":  {"value": 1792091381xxx, ...}
     # }
+    # stored_time() turns 1792091381008 back into 2026-10-15 19:09.
 
-
-# pakistan_time converts it to 2026-10-16 00:09.
 
 # ---------------------------------------------------------------------------
 # The prompt
@@ -124,7 +127,8 @@ Return ONLY valid JSON:
 Return {} only if no temporal expression exists or it
 cannot be represented by this schema.
 No explanations, reasoning, or extra fields.
-Timezone: Pakistan (UTC+05:00). Use 24-hour HH:MM.
+Use 24-hour HH:MM. Write every time exactly as the user says it.
+Never convert or adjust times for a time zone.
 
 SEMANTICS
 - Dates define an inclusive date range.
@@ -257,47 +261,38 @@ ALERT RULES
 - Never override explicit dates, weekdays, or durations.
 - Never clip a requested interval to stored alert dates.
 
-FACTS
-Now: Wednesday 2026-10-21 12:53
-Today: 2026-10-21
-Yesterday: 2026-10-20
-
-WEEKDAY LOOKUP (most recent)
-Monday: 2026-10-19
-Tuesday: 2026-10-20
-Wednesday: 2026-10-21
-Thursday: 2026-10-15
-Friday: 2026-10-16
-Saturday: 2026-10-17
-Sunday: 2026-10-18
+{FACTS}
 
 STEP 3: GENERATE JSON
 
 EXAMPLES
 
 Input: since last 5 days at 5pm
-Output: {"time":{"from_date":"2026-10-16","to_date":"2026-10-21","from_time":"17:00","to_time":"17:00"}}
+Output: {"time":{"from_date":"2026-10-17","to_date":"2026-10-22","from_time":"17:00","to_time":"17:00"}}
 
 Input: at 8 in the evening on Saturday
 Output: {"time":{"from_date":"2026-10-17","to_date":"2026-10-17","from_time":"20:00","to_time":"20:00"}}
 
 Input: since last 5 weeks
-Output: {"time":{"from_date":"2026-09-16","to_date":"2026-10-21","from_time":"00:00","to_time":"23:59"}}
+Output: {"time":{"from_date":"2026-09-17","to_date":"2026-10-22","from_time":"00:00","to_time":"23:59"}}
+
+Input: since 5 weeks
+Output: {"time":{"from_date":"2026-09-17","to_date":"2026-10-22","from_time":"00:00","to_time":"23:59"}}
 
 Input: anyone in white after 10 pm yesterday
-Output: {"time":{"from_date":"2026-10-20","to_date":"2026-10-20","from_time":"22:00","to_time":"23:59"}}
+Output: {"time":{"from_date":"2026-10-21","to_date":"2026-10-21","from_time":"22:00","to_time":"23:59"}}
 
 Input: a boy in the afternoon
-Output: {"time":{"from_date":"2026-10-20","to_date":"2026-10-20","from_time":"12:00","to_time":"17:00"}}
+Output: {"time":{"from_date":"2026-10-21","to_date":"2026-10-21","from_time":"12:00","to_time":"17:00"}}
 
 Input: a woman around 5 today
-Output: {"time":{"from_date":"2026-10-21","to_date":"2026-10-21","from_time":"04:30","to_time":"05:30"}}
+Output: {"time":{"from_date":"2026-10-22","to_date":"2026-10-22","from_time":"04:30","to_time":"05:30"}}
 
 Input: lady from 5 pm to 10 pm for a month
-Output: {"time":{"from_date":"2026-09-21","to_date":"2026-10-21","from_time":"17:00","to_time":"22:00"}}
+Output: {"time":{"from_date":"2026-09-22","to_date":"2026-10-22","from_time":"17:00","to_time":"22:00"}}
 
 Input: person from 10 pm to 3 am last night
-Output: {"time":{"from_date":"2026-10-20","to_date":"2026-10-20","from_time":"22:00","to_time":"03:00"}}
+Output: {"time":{"from_date":"2026-10-21","to_date":"2026-10-21","from_time":"22:00","to_time":"03:00"}}
 
 Input: woman wearing red
 Output: {}
@@ -314,13 +309,53 @@ FINAL VALIDATION
 """
 
 
-def build_prompt():
+def facts_text(now, first, last):
+    """
+    Why:     the model must know today's date and time to understand "today",
+             "monday" or "last 15 days", and the first/last alert (ALERT RULES).
+             These change with every search, so they are made here, never typed in.
+    Used by: build_prompt(), on every search.
+
+        FACTS
+        Now: Thursday 2026-10-22 06:41
+        Today: 2026-10-22
+        Yesterday: 2026-10-21
+        First alert stored: 2026-10-15 19:09
+        Last alert stored: 2026-10-21 13:14
+
+        WEEKDAY LOOKUP (most recent)
+        Monday: 2026-10-19
+        ...
+    """
+    today = now.date()
+    lines = [
+        "FACTS",
+        f"Now: {now:%A %Y-%m-%d %H:%M}",
+        f"Today: {today:%Y-%m-%d}",
+        f"Yesterday: {today - timedelta(days=1):%Y-%m-%d}",
+    ]
+    if first and last:
+        lines.append(f"First alert stored: {first:%Y-%m-%d %H:%M}")
+        lines.append(f"Last alert stored: {last:%Y-%m-%d %H:%M}")
+    else:
+        lines.append("First and last alert stored: unknown")
+
+    # The most recent date of each weekday, today included.
+    lines += ["", "WEEKDAY LOOKUP (most recent)"]
+    for weekday in range(7):  # 0 = Monday ... 6 = Sunday
+        days_back = (today.weekday() - weekday) % 7
+        date = today - timedelta(days=days_back)
+        lines.append(f"{date:%A}: {date:%Y-%m-%d}")
+    return "\n".join(lines)
+
+
+def build_prompt(now, first, last):
     """
     Why:     the facts change with every search, so the prompt is built fresh
-             each time: the fixed rules first, then the facts at the end.
+             each time: the rules with this search's facts put in at {FACTS}.
     Used by: ask_time().
     """
-    return RULES
+    return RULES.replace("{FACTS}", facts_text(now, first, last))
 
 
 # The shape the answer must have: {"time": {one window}}, or {} for no time.
@@ -345,10 +380,6 @@ JSON_SCHEMA = {
     "additionalProperties": False,
 }
 
-print("===== TIME RULES =====")
-print(RULES)
-print("===== END TIME RULES =====")
-
 
 # ---------------------------------------------------------------------------
 # Asking the model
@@ -361,14 +392,15 @@ def ask_time(text, now=None, data_range=None):
     Used by: llm_parser.parse_query() on every search, and run_time_tests.py.
 
     text       : what the user typed, sent as it is (the date is in the prompt)
-    now        : the current time; leave it out to use the real Pakistan time
+    now        : the current time; leave it out to use the real time (UTC clock)
     data_range : (first alert, last alert); leave it out to ask Elasticsearch.
                  The test script passes a fixed one, so it needs no Elasticsearch.
 
     Returns (answer, thinking): the answer exactly as the model wrote it.
     """
-
-    prompt = build_prompt()
+    now = now or current_time()
+    first, last = data_range or first_and_last_alert()
+    prompt = build_prompt(now, first, last)
     return ask_ollama(OLLAMA_TIME_MODEL, prompt, text, JSON_SCHEMA)
 
 

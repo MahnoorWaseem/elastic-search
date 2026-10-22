@@ -11,6 +11,7 @@ Converts the timestamp to the format Elasticsearch expects.
 Checks every value against the schema.
 Appends one line to output/flattened_alerts.jsonl.
 
+
 Turns ONE alert from the CV pipeline (received over MQTT) into one flat
 document for Elasticsearch, and adds it to output/flattened_alerts.jsonl.
 
@@ -29,7 +30,7 @@ every time a new alert arrives.
 import json
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 from defined_schema import DEFINED_SCHEMA, NOT_KNOWN
@@ -49,15 +50,19 @@ _file_lock = threading.Lock()
 
 def to_date_text(value):
     """
-    The pipeline sends PostgreSQL-style time text: "2026-10-15 19:09:41.008842+00".
-    Elasticsearch wants ISO format, so we convert it:
-        "2026-10-15 19:09:41.008842+00"  ->  "2026-10-15T19:09:41.008+00:00"  (UTC)
+    Why:     Elasticsearch must be able to read the time, but we don't change it.
+             The time is kept exactly as the pipeline sent it. Only the old
+             PostgreSQL SHAPE is rewritten into the ISO shape Elasticsearch reads:
+               "2026-10-21T13:06:23.327111+00:00"  ->  unchanged
+               "2026-10-15 19:09:41.008842+00"     ->  "2026-10-15T19:09:41.008842+00:00"
+             The numbers never change: no time-zone conversion, nothing rounded.
+    Used by: flatten_person_attributes().
     """
-    moment = datetime.fromisoformat(value)
-    if moment.tzinfo is None:
-        # No time zone written: we treat it as UTC.
-        moment = moment.replace(tzinfo=timezone.utc)
-    return moment.astimezone(timezone.utc).isoformat(timespec="milliseconds")
+    text = value.strip().replace(" ", "T", 1)
+    if len(text) >= 3 and text[-3] in "+-" and text[-2:].isdigit():
+        text += ":00"  # "+00" -> "+00:00"
+    datetime.fromisoformat(text)  # stops with an error if it isn't a real date and time
+    return text
 
 
 def make_alert_id(alert):
@@ -123,7 +128,6 @@ def clean_attributes(alert_id, raw):
 def flatten_person_attributes(alert):
     """One person-attributes alert in, one flat document out."""
     # Elasticsearch IDs are text, so 210 becomes "210".
-    # alert_id = str(alert["id"])
     alert_id = make_alert_id(alert)
 
     # Part 1: copied as they are (not CV guesses, so nothing to check).
