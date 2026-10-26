@@ -8,23 +8,23 @@ import boto3
 import cv2
 from botocore.config import Config
 from botocore.exceptions import ClientError
-from dotenv import load_dotenv
-
-load_dotenv()
+from config import (
+    SEAWEED_ACCESS_KEY,
+    SEAWEED_BUCKET,
+    SEAWEED_S3_ENDPOINT,
+    SEAWEED_SECRET_KEY,
+)
 
 
 class SeaweedClient:
     def __init__(self):
-        self.bucket = os.getenv("SEAWEED_BUCKET", "person-images")
+        self.bucket = SEAWEED_BUCKET
 
         self.s3 = boto3.client(
             "s3",
-            endpoint_url=os.getenv(
-                "SEAWEED_S3_ENDPOINT",
-                "http://localhost:8333",
-            ),
-            aws_access_key_id=os.environ["SEAWEED_ACCESS_KEY"],
-            aws_secret_access_key=os.environ["SEAWEED_SECRET_KEY"],
+            endpoint_url=SEAWEED_S3_ENDPOINT,
+            aws_access_key_id=SEAWEED_ACCESS_KEY,
+            aws_secret_access_key=SEAWEED_SECRET_KEY,
             region_name="us-east-1",
             config=Config(
                 signature_version="s3v4",
